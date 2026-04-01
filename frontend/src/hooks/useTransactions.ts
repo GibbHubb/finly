@@ -4,10 +4,11 @@ import { useTransactionStore } from "@/store/transactionStore";
 /** Fetches transactions on mount, returns store state. */
 export function useTransactions() {
   const store = useTransactionStore();
+  const fetch = useTransactionStore((s) => s.fetch);
 
   useEffect(() => {
-    store.fetch();
-  }, []);
+    fetch();
+  }, [fetch]);
 
   const totalIncome = store.transactions
     .filter((t) => t.type === "income")
