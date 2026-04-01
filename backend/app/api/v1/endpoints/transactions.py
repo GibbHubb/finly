@@ -3,16 +3,36 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.transaction import TransactionCreate, TransactionOut, TransactionUpdate
+from app.schemas.transaction import (
+    MonthlySummaryOut,
+    TransactionCreate,
+    TransactionOut,
+    TransactionUpdate,
+)
 from app.services.auth import get_current_user
 from app.services.transactions import (
     create_transaction,
     delete_transaction,
+    get_monthly_summary,
     get_user_transactions,
     update_transaction,
 )
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
+
+
+@router.get("/summary", response_model=MonthlySummaryOut)
+def monthly_summary(
+    month: int = Query(..., ge=1, le=12, description="Month (1-12)"),
+    year: int = Query(..., ge=2000, description="4-digit year"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Monthly summary: total income, total expenses, net balance, and per-category
+    breakdown with budget limit and remaining if a budget is set.
+    """
+    return get_monthly_summary(current_user.id, month, year, db)
 
 
 @router.get("/", response_model=list[TransactionOut])
