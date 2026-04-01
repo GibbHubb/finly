@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import func
@@ -17,15 +18,26 @@ def create_transaction(data: TransactionCreate, user_id: int, db: Session) -> Tr
     return tx
 
 
-def get_user_transactions(user_id: int, db: Session, skip: int = 0, limit: int = 100):
-    return (
-        db.query(Transaction)
-        .filter(Transaction.user_id == user_id)
-        .order_by(Transaction.transaction_date.desc())
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+def get_user_transactions(
+    user_id: int,
+    db: Session,
+    skip: int = 0,
+    limit: int = 100,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
+    tx_type: TransactionType | None = None,
+):
+    q = db.query(Transaction).filter(Transaction.user_id == user_id)
+    if date_from:
+        q = q.filter(Transaction.transaction_date >= date_from)
+    if date_to:
+        q = q.filter(Transaction.transaction_date <= date_to)
+    if category:
+        q = q.filter(Transaction.category == category)
+    if tx_type:
+        q = q.filter(Transaction.type == tx_type)
+    return q.order_by(Transaction.transaction_date.desc()).offset(skip).limit(limit).all()
 
 
 def get_monthly_summary(user_id: int, month: int, year: int, db: Session) -> dict:
