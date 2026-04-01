@@ -38,3 +38,20 @@ class TransactionOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class CategorySummary(BaseModel):
+    category: str
+    income: Decimal
+    expenses: Decimal
+    budget_limit: Decimal | None = None
+    budget_remaining: Decimal | None = None
+
+
+class MonthlySummaryOut(BaseModel):
+    month: int
+    year: int
+    total_income: Decimal
+    total_expenses: Decimal
+    net: Decimal
+    categories: list[CategorySummary]
