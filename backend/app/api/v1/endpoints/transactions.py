@@ -1,7 +1,10 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models.transaction import Category, TransactionType
 from app.models.user import User
 from app.schemas.transaction import (
     MonthlySummaryOut,
@@ -39,11 +42,21 @@ def monthly_summary(
 def list_transactions(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, le=500),
+    date_from: date | None = Query(None, description="Filter from date (inclusive), e.g. 2024-01-01"),
+    date_to: date | None = Query(None, description="Filter to date (inclusive), e.g. 2024-12-31"),
+    category: Category | None = Query(None, description="Filter by category"),
+    type: TransactionType | None = Query(None, description="Filter by type: income or expense"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all transactions for the authenticated user."""
-    return get_user_transactions(current_user.id, db, skip, limit)
+    """List transactions for the authenticated user with optional filters."""
+    return get_user_transactions(
+        current_user.id, db, skip, limit,
+        date_from=date_from,
+        date_to=date_to,
+        category=category.value if category else None,
+        tx_type=type,
+    )
 
 
 @router.post("/", response_model=TransactionOut, status_code=201)
