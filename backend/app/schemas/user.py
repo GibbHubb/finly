@@ -18,6 +18,12 @@ class UserOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class UserUpdate(BaseModel):
+    full_name: str | None = None
+    current_password: str | None = None
+    new_password: str | None = None
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
