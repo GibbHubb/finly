@@ -3,6 +3,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useTransactionStore } from "@/store/transactionStore";
 import type { TransactionCreate, Category } from "@/types";
+import { formatCurrency, formatDate } from "@/utils/format";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from "recharts";
@@ -55,15 +56,15 @@ export default function DashboardPage() {
       <div className="stats">
         <div className="stat-card income">
           <p>Income</p>
-          <h2>€{totalIncome.toFixed(2)}</h2>
+          <h2>{formatCurrency(totalIncome)}</h2>
         </div>
         <div className="stat-card expense">
           <p>Expenses</p>
-          <h2>€{totalExpense.toFixed(2)}</h2>
+          <h2>{formatCurrency(totalExpense)}</h2>
         </div>
         <div className={`stat-card ${balance >= 0 ? "positive" : "negative"}`}>
           <p>Balance</p>
-          <h2>€{balance.toFixed(2)}</h2>
+          <h2>{formatCurrency(balance)}</h2>
         </div>
       </div>
 
@@ -73,8 +74,8 @@ export default function DashboardPage() {
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={monthlyData}>
               <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip formatter={(v: number) => `€${v.toFixed(2)}`} />
+              <YAxis tickFormatter={(v: number) => formatCurrency(v)} />
+              <Tooltip formatter={(v: number) => formatCurrency(v)} />
               <Bar dataKey="income" fill="#22c55e" radius={[4,4,0,0]} />
               <Bar dataKey="expense" fill="#f43f5e" radius={[4,4,0,0]} />
             </BarChart>
@@ -88,7 +89,7 @@ export default function DashboardPage() {
               <Pie data={expenseByCategory} dataKey="amount" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
                 {expenseByCategory.map((e, i) => <Cell key={i} fill={e.fill} />)}
               </Pie>
-              <Tooltip formatter={(v: number) => `€${v.toFixed(2)}`} />
+              <Tooltip formatter={(v: number) => formatCurrency(v)} />
               <Legend />
             </PieChart>
           </ResponsiveContainer>
@@ -119,10 +120,12 @@ export default function DashboardPage() {
               <div>
                 <span className="tx-cat">{tx.category}</span>
                 <span className="tx-desc">{tx.description}</span>
-                <span className="tx-date">{tx.transaction_date}</span>
+                <span className="tx-date">{formatDate(tx.transaction_date)}</span>
               </div>
               <div className="tx-right">
-                <span className="tx-amount">{tx.type === "expense" ? "-" : "+"}€{parseFloat(tx.amount).toFixed(2)}</span>
+                <span className="tx-amount">
+                  {tx.type === "expense" ? "-" : "+"}{formatCurrency(parseFloat(tx.amount))}
+                </span>
                 <button onClick={() => remove(tx.id)} className="btn-del">✕</button>
               </div>
             </div>
