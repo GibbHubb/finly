@@ -45,6 +45,21 @@ export interface CategorySummary {
   budget_remaining?: string;
 }
 
+export interface Budget {
+  id: number;
+  category: Category;
+  limit_amount: string;
+  month: number;
+  year: number;
+}
+
+export interface BudgetCreate {
+  category: Category;
+  limit_amount: number;
+  month: number;
+  year: number;
+}
+
 export interface MonthlySummary {
   month: number;
   year: number;
