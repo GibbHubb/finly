@@ -1,0 +1,16 @@
+[run]
+branch = True
+source = app
+omit =
+    app/main.py
+    app/core/config.py
+    */__init__.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    raise NotImplementedError
+    if TYPE_CHECKING:
+    if __name__ == .__main__.:
+skip_covered = False
+show_missing = True
