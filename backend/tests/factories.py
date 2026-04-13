@@ -42,8 +42,8 @@ class BudgetFactory(_Base):
     class Meta:
         model = Budget
 
-    user = factory.SubFactory(UserFactory)
-    user_id = factory.SelfAttribute("user.id")
+    owner = factory.SubFactory(UserFactory)
+    user_id = factory.SelfAttribute("owner.id")
     category = "food"
     limit_amount = Decimal("300.00")
     month = 6
@@ -54,8 +54,8 @@ class TransactionFactory(_Base):
     class Meta:
         model = Transaction
 
-    user = factory.SubFactory(UserFactory)
-    user_id = factory.SelfAttribute("user.id")
+    owner = factory.SubFactory(UserFactory)
+    user_id = factory.SelfAttribute("owner.id")
     amount = Decimal("25.00")
     type = TransactionType.expense
     category = Category.food

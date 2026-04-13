@@ -71,8 +71,8 @@ class TestCreateBudget:
 class TestListBudgets:
     def test_returns_only_current_user_budgets(self, db):
         alice, bob = UserFactory(), UserFactory()
-        BudgetFactory.create_batch(3, user=alice, user_id=alice.id)
-        BudgetFactory(user=bob, user_id=bob.id, month=1)
+        BudgetFactory.create_batch(3, owner=alice, user_id=alice.id)
+        BudgetFactory(owner=bob, user_id=bob.id, month=1)
 
         result = get_user_budgets(alice.id, db)
 
@@ -81,9 +81,9 @@ class TestListBudgets:
 
     def test_ordered_newest_first(self, db):
         user = UserFactory()
-        BudgetFactory(user=user, user_id=user.id, year=2023, month=12)
-        BudgetFactory(user=user, user_id=user.id, year=2024, month=1)
-        BudgetFactory(user=user, user_id=user.id, year=2024, month=6)
+        BudgetFactory(owner=user, user_id=user.id, year=2023, month=12)
+        BudgetFactory(owner=user, user_id=user.id, year=2024, month=1)
+        BudgetFactory(owner=user, user_id=user.id, year=2024, month=6)
 
         result = get_user_budgets(user.id, db)
 
@@ -101,9 +101,9 @@ class TestListBudgets:
     )
     def test_filter_matrix(self, db, filter_kwargs, expected_count):
         user = UserFactory()
-        BudgetFactory(user=user, user_id=user.id, month=6, year=2024)
-        BudgetFactory(user=user, user_id=user.id, month=6, year=2023, category="transport")
-        BudgetFactory(user=user, user_id=user.id, month=1, year=2024, category="health")
+        BudgetFactory(owner=user, user_id=user.id, month=6, year=2024)
+        BudgetFactory(owner=user, user_id=user.id, month=6, year=2023, category="transport")
+        BudgetFactory(owner=user, user_id=user.id, month=1, year=2024, category="health")
 
         result = get_user_budgets(user.id, db, **filter_kwargs)
 
@@ -113,7 +113,7 @@ class TestListBudgets:
 class TestDeleteBudget:
     def test_removes_own_budget(self, db):
         user = UserFactory()
-        budget = BudgetFactory(user=user, user_id=user.id)
+        budget = BudgetFactory(owner=user, user_id=user.id)
 
         delete_budget(budget.id, user.id, db)
 
@@ -121,7 +121,7 @@ class TestDeleteBudget:
 
     def test_cannot_delete_other_users_budget(self, db):
         alice, bob = UserFactory(), UserFactory()
-        alice_budget = BudgetFactory(user=alice, user_id=alice.id)
+        alice_budget = BudgetFactory(owner=alice, user_id=alice.id)
 
         with pytest.raises(HTTPException) as exc:
             delete_budget(alice_budget.id, bob.id, db)
