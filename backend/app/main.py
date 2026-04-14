@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
+from app.api.ws import router as ws_router
 from app.db.session import Base, engine
 import app.models.user        # noqa: F401 — register models with SQLAlchemy
 import app.models.transaction  # noqa: F401
@@ -24,6 +25,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+app.include_router(ws_router)
 
 
 @app.get("/health", tags=["health"])

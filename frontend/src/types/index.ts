@@ -3,6 +3,7 @@ export interface User {
   email: string;
   full_name: string;
   is_active: boolean;
+  base_currency: string;
   created_at: string;
 }
 
@@ -13,6 +14,7 @@ export interface Transaction {
   category: Category;
   description: string;
   transaction_date: string;
+  currency: string;
   created_at: string;
 }
 
@@ -26,6 +28,7 @@ export interface TransactionCreate {
   category: Category;
   description?: string;
   transaction_date: string;
+  currency?: string;
 }
 
 export interface TransactionFilters {
@@ -58,6 +61,20 @@ export interface BudgetCreate {
   limit_amount: number;
   month: number;
   year: number;
+}
+
+export interface ForecastResult {
+  month: string;           // YYYY-MM
+  projected_total: string | null;
+  confidence: "low" | "medium" | "high";
+  data_points_used: number;
+  reason: string | null;
+}
+
+export interface ImportResult {
+  imported: number;
+  skipped_duplicates: number;
+  errors: string[];
 }
 
 export interface MonthlySummary {

@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useTransactionStore } from "@/store/transactionStore";
-import type { TransactionCreate, Category } from "@/types";
+import { useTransactionSocket } from "@/hooks/useTransactionSocket";
+import type { TransactionCreate, Category, ImportResult } from "@/types";
 import { formatCurrency, formatDate } from "@/utils/format";
+
+const CURRENCIES = ["EUR", "USD", "GBP", "SEK", "NOK", "DKK"];
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from "recharts";
@@ -11,19 +14,60 @@ import {
 const CATEGORIES: Category[] = ["housing","food","transport","entertainment","health","shopping","salary","freelance","other"];
 const COLORS = ["#6366f1","#22c55e","#f59e0b","#ec4899","#14b8a6","#8b5cf6","#f97316","#06b6d4","#84cc16"];
 
-export default function DashboardPage() {
-  const { user, logout } = useAuthStore();
-  const { transactions, totalIncome, totalExpense, balance, isLoading } = useTransactions();
-  const { add, remove } = useTransactionStore();
+const CONFIDENCE_COLOR: Record<string, string> = {
+  high: "#22c55e",
+  medium: "#f59e0b",
+  low: "#94a3b8",
+};
 
+export default function DashboardPage() {
+  const { user, logout, baseCurrency, setBaseCurrency } = useAuthStore();
+  const { transactions, totalIncome, totalExpense, balance, isLoading } = useTransactions();
+  const { add, remove, fetchForecast, forecast, forecastLoading, importCsv } = useTransactionStore();
+  useTransactionSocket();
+
+  const now = new Date();
   const [form, setForm] = useState<TransactionCreate>({
-    amount: 0, type: "expense", category: "food", description: "", transaction_date: new Date().toISOString().slice(0, 10),
+    amount: 0, type: "expense", category: "food", description: "", transaction_date: now.toISOString().slice(0, 10), currency: baseCurrency,
   });
+
+  const [importToast, setImportToast] = useState<ImportResult | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch forecast for current month on mount
+  useEffect(() => {
+    fetchForecast(now.getMonth() + 1, now.getFullYear());
+  }, []);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     await add(form);
     setForm((f) => ({ ...f, amount: 0, description: "" }));
+    // Refresh forecast after adding a transaction
+    fetchForecast(now.getMonth() + 1, now.getFullYear());
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportToast(null);
+    setImportError(null);
+    try {
+      const result = await importCsv(file);
+      setImportToast(result);
+      if (result.imported > 0) {
+        fetchForecast(now.getMonth() + 1, now.getFullYear());
+      }
+    } catch {
+      setImportError("Import failed — check the file format (ING or ABN AMRO CSV).");
+    } finally {
+      setImporting(false);
+      // Reset so the same file can be re-selected
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   // Chart data
@@ -50,6 +94,14 @@ export default function DashboardPage() {
       <header className="dash-header">
         <h1>💸 Finly</h1>
         <span>Hello, {user?.full_name}</span>
+        <select
+          className="currency-select"
+          value={baseCurrency}
+          onChange={(e) => setBaseCurrency(e.target.value)}
+          title="Display currency"
+        >
+          {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
         <button onClick={logout} className="btn-ghost">Sign out</button>
       </header>
 
@@ -65,6 +117,26 @@ export default function DashboardPage() {
         <div className={`stat-card ${balance >= 0 ? "positive" : "negative"}`}>
           <p>Balance</p>
           <h2>{formatCurrency(balance)}</h2>
+        </div>
+
+        {/* Forecast card */}
+        <div className="stat-card forecast">
+          <p>Projected spend</p>
+          {forecastLoading ? (
+            <h2 className="forecast-loading">…</h2>
+          ) : forecast?.projected_total ? (
+            <>
+              <h2>{formatCurrency(parseFloat(forecast.projected_total))}</h2>
+              <span
+                className="forecast-confidence"
+                style={{ color: CONFIDENCE_COLOR[forecast.confidence] }}
+              >
+                {forecast.confidence} confidence · {forecast.data_points_used} data points
+              </span>
+            </>
+          ) : (
+            <span className="forecast-na">Not enough data yet</span>
+          )}
         </div>
       </div>
 
@@ -110,6 +182,36 @@ export default function DashboardPage() {
           <input placeholder="Description (optional)" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
           <input type="date" value={form.transaction_date} onChange={(e) => setForm((f) => ({ ...f, transaction_date: e.target.value }))} required />
           <button type="submit">Add</button>
+
+          {/* Import CSV */}
+          <div className="import-section">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              style={{ display: "none" }}
+              onChange={handleImport}
+            />
+            <button
+              type="button"
+              className="btn-import"
+              disabled={importing}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {importing ? "Importing…" : "Import CSV"}
+            </button>
+            <span className="import-hint">ING or ABN AMRO export</span>
+          </div>
+
+          {importToast && (
+            <div className={`import-toast ${importToast.imported > 0 ? "success" : "neutral"}`}>
+              ✓ {importToast.imported} imported · {importToast.skipped_duplicates} duplicates skipped
+              {importToast.errors.length > 0 && (
+                <span className="import-errors"> · {importToast.errors.length} row error(s)</span>
+              )}
+            </div>
+          )}
+          {importError && <div className="import-toast error">{importError}</div>}
         </form>
 
         <div className="tx-list">
@@ -123,8 +225,11 @@ export default function DashboardPage() {
                 <span className="tx-date">{formatDate(tx.transaction_date)}</span>
               </div>
               <div className="tx-right">
-                <span className="tx-amount">
+                <span className="tx-amount" title={tx.currency !== baseCurrency ? `${tx.currency} original` : undefined}>
                   {tx.type === "expense" ? "-" : "+"}{formatCurrency(parseFloat(tx.amount))}
+                  {tx.currency && tx.currency !== baseCurrency && (
+                    <span className="tx-currency">{tx.currency}</span>
+                  )}
                 </span>
                 <button onClick={() => remove(tx.id)} className="btn-del">✕</button>
               </div>

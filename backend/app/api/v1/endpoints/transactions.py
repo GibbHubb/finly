@@ -1,18 +1,20 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.transaction import Category, TransactionType
 from app.models.user import User
 from app.schemas.transaction import (
+    ImportResultOut,
     MonthlySummaryOut,
     TransactionCreate,
     TransactionOut,
     TransactionUpdate,
 )
 from app.services.auth import get_current_user
+from app.services.import_service import import_csv
 from app.services.transactions import (
     create_transaction,
     delete_transaction,
@@ -60,13 +62,29 @@ def list_transactions(
 
 
 @router.post("/", response_model=TransactionOut, status_code=201)
-def add_transaction(
+async def add_transaction(
     data: TransactionCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Create a new income or expense transaction."""
-    return create_transaction(data, current_user.id, db)
+    from app.core.ws_manager import manager
+    tx = create_transaction(data, current_user.id, db)
+    await manager.broadcast({
+        "event": "transaction_created",
+        "transaction": {
+            "id": tx.id,
+            "amount": str(tx.amount),
+            "type": tx.type,
+            "category": tx.category,
+            "description": tx.description,
+            "transaction_date": str(tx.transaction_date),
+            "currency": tx.currency,
+            "created_at": str(tx.created_at),
+            "user_id": tx.user_id,
+        },
+    })
+    return tx
 
 
 @router.patch("/{tx_id}", response_model=TransactionOut)
@@ -88,3 +106,17 @@ def remove_transaction(
 ):
     """Delete a transaction."""
     delete_transaction(tx_id, current_user.id, db)
+
+
+@router.post("/import", response_model=ImportResultOut)
+async def import_transactions(
+    file: UploadFile = File(..., description="ING or ABN AMRO CSV export"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Import transactions from a Dutch bank CSV export (ING or ABN AMRO).
+    Deduplicates against existing transactions by date+amount+description hash.
+    """
+    content = await file.read()
+    return import_csv(content, current_user.id, db)
