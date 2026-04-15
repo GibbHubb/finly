@@ -1,5 +1,7 @@
 # 💸 Finly — Personal Finance Tracker
 
+![Tests](https://github.com/GibbHubb/finly/actions/workflows/test.yml/badge.svg)
+
 > Full-stack personal finance tracker built with **FastAPI** + **React**.  
 > Demonstrates REST API design, JWT auth, SQL (SQLite → Postgres), and React hooks & state.
 
@@ -13,7 +15,19 @@
 | DB        | SQLite (dev) / PostgreSQL (prod)        |
 | CI        | GitHub Actions                          |
 
-## Getting Started
+## Quick Start
+
+```bash
+cp .env.example .env
+# Fill in your values in .env
+docker compose up
+```
+
+App runs at http://localhost:3000, API at http://localhost:8000.
+
+---
+
+## Getting Started (without Docker)
 
 ### Backend
 ```bash

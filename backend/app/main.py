@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,6 +9,12 @@ from app.db.session import Base, engine
 import app.models.user        # noqa: F401 — register models with SQLAlchemy
 import app.models.transaction  # noqa: F401
 import app.models.budget       # noqa: F401
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 Base.metadata.create_all(bind=engine)
 
@@ -30,4 +38,5 @@ app.include_router(ws_router)
 
 @app.get("/health", tags=["health"])
 def health():
+    logger.info("Health check requested")
     return {"status": "ok"}

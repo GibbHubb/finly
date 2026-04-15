@@ -55,3 +55,17 @@ class MonthlySummaryOut(BaseModel):
     total_expenses: Decimal
     net: Decimal
     categories: list[CategorySummary]
+
+
+class ForecastOut(BaseModel):
+    month: str          # YYYY-MM
+    projected_total: Decimal | None
+    confidence: str     # "low" | "medium" | "high"
+    data_points_used: int
+    reason: str | None = None
+
+
+class ImportResultOut(BaseModel):
+    imported: int
+    skipped_duplicates: int
+    errors: list[str]
