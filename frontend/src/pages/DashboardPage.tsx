@@ -158,7 +158,7 @@ export default function DashboardPage() {
           <h3>Spending by Category</h3>
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
-              <Pie data={expenseByCategory} dataKey="amount" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
+              <Pie data={expenseByCategory} dataKey="amount" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2}>
                 {expenseByCategory.map((e, i) => <Cell key={i} fill={e.fill} />)}
               </Pie>
               <Tooltip formatter={(v: number) => formatCurrency(v)} />
