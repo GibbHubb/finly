@@ -1,13 +1,16 @@
 import { useEffect, useRef } from "react";
 import { useTransactionStore } from "@/store/transactionStore";
 import { useAuthStore } from "@/store/authStore";
+import type { BudgetAlert } from "@/types";
 
 const WS_BASE = import.meta.env.VITE_WS_URL ?? "ws://localhost:8000";
 const MAX_RETRIES = 5;
 
-export function useTransactionSocket() {
+export function useTransactionSocket(onBudgetAlert?: (alert: BudgetAlert) => void) {
   const token = useAuthStore((s) => s.token);
   const pushTransaction = useTransactionStore((s) => s.pushTransaction);
+  const alertCb = useRef(onBudgetAlert);
+  alertCb.current = onBudgetAlert;
   const retries = useRef(0);
   const ws = useRef<WebSocket | null>(null);
   const unmounted = useRef(false);
@@ -26,6 +29,8 @@ export function useTransactionSocket() {
           const msg = JSON.parse(ev.data);
           if (msg.event === "transaction_created") {
             pushTransaction(msg.transaction);
+          } else if (msg.event === "budget_alert") {
+            alertCb.current?.(msg as BudgetAlert);
           }
         } catch {
           // ignore malformed frames

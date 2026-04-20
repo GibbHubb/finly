@@ -9,6 +9,7 @@ from app.models.user import User
 from app.schemas.transaction import (
     ImportResultOut,
     MonthlySummaryOut,
+    RecurringItemOut,
     TransactionCreate,
     TransactionOut,
     TransactionUpdate,
@@ -61,6 +62,16 @@ def list_transactions(
     )
 
 
+@router.get("/recurring", response_model=list[RecurringItemOut])
+def list_recurring(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Detect recurring (subscription-like) expense transactions."""
+    from app.services.recurring_service import detect
+    return detect(current_user.id, db)
+
+
 @router.post("/", response_model=TransactionOut, status_code=201)
 async def add_transaction(
     data: TransactionCreate,
@@ -69,6 +80,8 @@ async def add_transaction(
 ):
     """Create a new income or expense transaction."""
     from app.core.ws_manager import manager
+    from app.services.budget_alert_service import check_budget_overspend
+
     tx = create_transaction(data, current_user.id, db)
     await manager.broadcast({
         "event": "transaction_created",
@@ -84,6 +97,19 @@ async def add_transaction(
             "user_id": tx.user_id,
         },
     })
+
+    # Check if this transaction tips a budget over its limit
+    if data.type == TransactionType.expense:
+        alert = check_budget_overspend(
+            current_user.id,
+            data.category.value,
+            tx.transaction_date.month,
+            tx.transaction_date.year,
+            db,
+        )
+        if alert:
+            await manager.send_to_user(current_user.id, alert)
+
     return tx
 
 

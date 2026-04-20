@@ -69,3 +69,11 @@ class ImportResultOut(BaseModel):
     imported: int
     skipped_duplicates: int
     errors: list[str]
+
+
+class RecurringItemOut(BaseModel):
+    merchant: str
+    monthly_amount: float
+    typical_day: int
+    months_detected: int
+    last_seen: date

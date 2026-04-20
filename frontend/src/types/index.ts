@@ -85,3 +85,19 @@ export interface MonthlySummary {
   net: string;
   categories: CategorySummary[];
 }
+
+export interface BudgetAlert {
+  event: "budget_alert";
+  category: string;
+  spent: string;
+  limit: string;
+  overage: string;
+}
+
+export interface RecurringItem {
+  merchant: string;
+  monthly_amount: number;
+  typical_day: number;
+  months_detected: number;
+  last_seen: string;
+}

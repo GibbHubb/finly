@@ -19,12 +19,13 @@ async def ws_transactions(
     """
     # Validate JWT before accepting the connection
     try:
-        decode_token(token)
-    except ValueError:
+        payload = decode_token(token)
+        user_id = int(payload["sub"])
+    except (ValueError, KeyError):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    await manager.connect(websocket)
+    await manager.connect(websocket, user_id=user_id)
     try:
         while True:
             # Keep connection alive; we only push server → client

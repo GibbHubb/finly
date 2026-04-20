@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ForecastResult, ImportResult, Transaction, TransactionCreate } from "@/types";
+import type { ForecastResult, ImportResult, RecurringItem, Transaction, TransactionCreate } from "@/types";
 import { transactionService } from "@/services/transactions";
 
 interface TransactionState {
@@ -7,11 +7,14 @@ interface TransactionState {
   isLoading: boolean;
   forecast: ForecastResult | null;
   forecastLoading: boolean;
+  recurring: RecurringItem[];
+  recurringLoading: boolean;
   fetch: () => Promise<void>;
   add: (payload: TransactionCreate) => Promise<void>;
   remove: (id: number) => Promise<void>;
   pushTransaction: (tx: Transaction) => void;
   fetchForecast: (month: number, year: number) => Promise<void>;
+  fetchRecurring: () => Promise<void>;
   importCsv: (file: File) => Promise<ImportResult>;
 }
 
@@ -20,6 +23,8 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
   isLoading: false,
   forecast: null,
   forecastLoading: false,
+  recurring: [],
+  recurringLoading: false,
 
   fetch: async () => {
     set({ isLoading: true });
@@ -50,6 +55,16 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
       set({ forecast, forecastLoading: false });
     } catch {
       set({ forecastLoading: false });
+    }
+  },
+
+  fetchRecurring: async () => {
+    set({ recurringLoading: true });
+    try {
+      const recurring = await transactionService.recurring();
+      set({ recurring, recurringLoading: false });
+    } catch {
+      set({ recurringLoading: false });
     }
   },
 

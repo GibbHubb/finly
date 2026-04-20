@@ -1,5 +1,5 @@
 import api from "./api";
-import type { ForecastResult, ImportResult, MonthlySummary, Transaction, TransactionCreate, TransactionFilters } from "@/types";
+import type { ForecastResult, ImportResult, MonthlySummary, RecurringItem, Transaction, TransactionCreate, TransactionFilters } from "@/types";
 
 export const transactionService = {
   async list(filters: TransactionFilters = {}): Promise<Transaction[]> {
@@ -36,6 +36,11 @@ export const transactionService = {
     const { data } = await api.post<ImportResult>("/transactions/import", form, {
       headers: { "Content-Type": "multipart/form-data" },
     });
+    return data;
+  },
+
+  async recurring(): Promise<RecurringItem[]> {
+    const { data } = await api.get<RecurringItem[]>("/transactions/recurring");
     return data;
   },
 };

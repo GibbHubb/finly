@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useTransactionStore } from "@/store/transactionStore";
 import { useTransactionSocket } from "@/hooks/useTransactionSocket";
-import type { TransactionCreate, Category, ImportResult } from "@/types";
+import type { TransactionCreate, Category, ImportResult, BudgetAlert } from "@/types";
 import { formatCurrency, formatDate } from "@/utils/format";
 
 const CURRENCIES = ["EUR", "USD", "GBP", "SEK", "NOK", "DKK"];
@@ -23,8 +23,17 @@ const CONFIDENCE_COLOR: Record<string, string> = {
 export default function DashboardPage() {
   const { user, logout, baseCurrency, setBaseCurrency } = useAuthStore();
   const { transactions, totalIncome, totalExpense, balance, isLoading } = useTransactions();
-  const { add, remove, fetchForecast, forecast, forecastLoading, importCsv } = useTransactionStore();
-  useTransactionSocket();
+  const { add, remove, fetchForecast, forecast, forecastLoading, importCsv, fetchRecurring, recurring, recurringLoading } = useTransactionStore();
+
+  // Budget alert toasts
+  const [budgetAlerts, setBudgetAlerts] = useState<BudgetAlert[]>([]);
+  const handleBudgetAlert = useCallback((alert: BudgetAlert) => {
+    setBudgetAlerts((prev) => [...prev, alert]);
+    setTimeout(() => {
+      setBudgetAlerts((prev) => prev.filter((a) => a !== alert));
+    }, 5000);
+  }, []);
+  useTransactionSocket(handleBudgetAlert);
 
   const now = new Date();
   const [form, setForm] = useState<TransactionCreate>({
@@ -36,9 +45,10 @@ export default function DashboardPage() {
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch forecast for current month on mount
+  // Fetch forecast + recurring on mount
   useEffect(() => {
     fetchForecast(now.getMonth() + 1, now.getFullYear());
+    fetchRecurring();
   }, []);
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -168,6 +178,29 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Subscriptions / recurring spend */}
+      <div className="subscriptions-card">
+        <h3>Subscriptions</h3>
+        {recurringLoading ? (
+          <p className="sub-empty">Loading…</p>
+        ) : recurring.length === 0 ? (
+          <p className="sub-empty">No subscriptions detected</p>
+        ) : (
+          <>
+            <p className="sub-total">~{formatCurrency(recurring.reduce((s, r) => s + r.monthly_amount, 0))}/mo</p>
+            <div className="sub-list">
+              {recurring.map((r) => (
+                <div key={r.merchant} className="sub-row">
+                  <span className="sub-merchant">{r.merchant}</span>
+                  <span className="sub-amount">{formatCurrency(r.monthly_amount)}/mo</span>
+                  <span className="sub-meta">{r.months_detected} months · day ~{r.typical_day}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
       <div className="main-grid">
         <form className="add-form" onSubmit={handleAdd}>
           <h3>Add Transaction</h3>
@@ -237,6 +270,18 @@ export default function DashboardPage() {
           ))}
         </div>
       </div>
+
+      {/* Budget alert toasts */}
+      {budgetAlerts.length > 0 && (
+        <div className="budget-toast-stack">
+          {budgetAlerts.map((a, i) => (
+            <div key={i} className="budget-toast">
+              <span>{a.category} over budget — {formatCurrency(parseFloat(a.spent))} of {formatCurrency(parseFloat(a.limit))} limit</span>
+              <button onClick={() => setBudgetAlerts((prev) => prev.filter((_, j) => j !== i))}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
