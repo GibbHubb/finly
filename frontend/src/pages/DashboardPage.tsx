@@ -45,6 +45,18 @@ export default function DashboardPage() {
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // F8 — transaction filter state
+  const [filterText, setFilterText] = useState("");
+  const [filterCategory, setFilterCategory] = useState<Category | "all">("all");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterAmountMin, setFilterAmountMin] = useState("");
+  const [filterAmountMax, setFilterAmountMax] = useState("");
+  const hasActiveFilters = filterText || filterCategory !== "all" || filterDateFrom || filterDateTo || filterAmountMin || filterAmountMax;
+  const clearFilters = () => {
+    setFilterText(""); setFilterCategory("all"); setFilterDateFrom(""); setFilterDateTo(""); setFilterAmountMin(""); setFilterAmountMax("");
+  };
+
   // Fetch forecast + recurring on mount
   useEffect(() => {
     fetchForecast(now.getMonth() + 1, now.getFullYear());
@@ -249,8 +261,80 @@ export default function DashboardPage() {
 
         <div className="tx-list">
           <h3>Recent Transactions</h3>
+
+          {/* F8 — filter bar */}
+          <div className="tx-filter-bar">
+            <input
+              type="text"
+              placeholder="🔍 Search description or category..."
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              className="tx-filter-search"
+            />
+            <div className="tx-filter-row">
+              <select
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value as Category | "all")}
+                className="tx-filter-input"
+              >
+                <option value="all">All categories</option>
+                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <input
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="tx-filter-input"
+                title="From"
+              />
+              <input
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                className="tx-filter-input"
+                title="To"
+              />
+              <input
+                type="number"
+                placeholder="Min €"
+                value={filterAmountMin}
+                onChange={(e) => setFilterAmountMin(e.target.value)}
+                className="tx-filter-input tx-filter-num"
+                step="0.01"
+              />
+              <input
+                type="number"
+                placeholder="Max €"
+                value={filterAmountMax}
+                onChange={(e) => setFilterAmountMax(e.target.value)}
+                className="tx-filter-input tx-filter-num"
+                step="0.01"
+              />
+              {hasActiveFilters && (
+                <button onClick={clearFilters} className="tx-filter-clear" type="button">Clear</button>
+              )}
+            </div>
+          </div>
+
           {isLoading && <p>Loading…</p>}
-          {transactions.slice(0, 30).map((tx) => (
+          {(() => {
+            const searchLower = filterText.toLowerCase();
+            const min = filterAmountMin ? parseFloat(filterAmountMin) : null;
+            const max = filterAmountMax ? parseFloat(filterAmountMax) : null;
+            const filtered = transactions.filter((tx) => {
+              if (searchLower && !tx.description.toLowerCase().includes(searchLower) && !tx.category.toLowerCase().includes(searchLower)) return false;
+              if (filterCategory !== "all" && tx.category !== filterCategory) return false;
+              if (filterDateFrom && tx.transaction_date < filterDateFrom) return false;
+              if (filterDateTo && tx.transaction_date > filterDateTo) return false;
+              const amt = parseFloat(tx.amount);
+              if (min !== null && amt < min) return false;
+              if (max !== null && amt > max) return false;
+              return true;
+            });
+            if (filtered.length === 0 && hasActiveFilters) {
+              return <p style={{ color: "var(--muted)", fontSize: "0.85rem", padding: "0.5rem 0" }}>No transactions match the current filters.</p>;
+            }
+            return filtered.slice(0, 30).map((tx) => (
             <div key={tx.id} className={`tx-row ${tx.type}`}>
               <div>
                 <span className="tx-cat">{tx.category}</span>
@@ -267,7 +351,8 @@ export default function DashboardPage() {
                 <button onClick={() => remove(tx.id)} className="btn-del">✕</button>
               </div>
             </div>
-          ))}
+            ));
+          })()}
         </div>
       </div>
 

@@ -19,3 +19,4 @@ class User(Base):
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     budgets: Mapped[list["Budget"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
+    savings_goals: Mapped[list["SavingsGoal"]] = relationship(back_populates="owner", cascade="all, delete-orphan")

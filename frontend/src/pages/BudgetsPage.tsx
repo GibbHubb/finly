@@ -69,6 +69,7 @@ export default function BudgetsPage() {
         <nav style={{ display: "flex", gap: "1rem" }}>
           <Link to="/dashboard" className="btn-ghost">Dashboard</Link>
           <Link to="/budgets" className="btn-ghost" style={{ color: "var(--accent2)" }}>Budgets</Link>
+          <Link to="/savings" className="btn-ghost">Savings</Link>
         </nav>
       </header>
 

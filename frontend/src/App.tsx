@@ -5,6 +5,7 @@ import LoginPage from "@/pages/LoginPage";
 import RegisterPage from "@/pages/RegisterPage";
 import DashboardPage from "@/pages/DashboardPage";
 import BudgetsPage from "@/pages/BudgetsPage";
+import SavingsPage from "@/pages/SavingsPage";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { token } = useAuthStore();
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="/register" element={<RequireGuest><RegisterPage /></RequireGuest>} />
         <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
         <Route path="/budgets" element={<RequireAuth><BudgetsPage /></RequireAuth>} />
+        <Route path="/savings" element={<RequireAuth><SavingsPage /></RequireAuth>} />
       </Routes>
     </BrowserRouter>
   );

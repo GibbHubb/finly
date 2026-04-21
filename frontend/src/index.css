@@ -417,6 +417,55 @@ input, select, button {
   .dashboard { padding: 0 1rem 2rem; }
 }
 
+/* ─── Transaction Filter Bar (F8) ────────────────────────── */
+.tx-filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+.tx-filter-search {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+.tx-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.tx-filter-input {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8rem;
+  font-family: inherit;
+  flex: 1;
+  min-width: 90px;
+}
+.tx-filter-num { max-width: 100px; flex: 0 0 auto; }
+.tx-filter-clear {
+  background: var(--expense);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.tx-filter-clear:hover { opacity: 0.85; }
+
 /* ─── Subscriptions Card ─────────────────────────────────── */
 .subscriptions-card {
   background: var(--surface);

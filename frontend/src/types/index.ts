@@ -101,3 +101,25 @@ export interface RecurringItem {
   months_detected: number;
   last_seen: string;
 }
+
+export interface SavingsGoal {
+  id: number;
+  name: string;
+  target_amount: string;
+  current_amount: string;
+  deadline: string | null;
+  progress_pct: number;
+}
+
+export interface SavingsGoalCreate {
+  name: string;
+  target_amount: number;
+  deadline?: string;
+}
+
+export interface SavingsGoalUpdate {
+  name?: string;
+  target_amount?: number;
+  current_amount?: number;
+  deadline?: string | null;
+}

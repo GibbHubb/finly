@@ -6,9 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from app.api.ws import router as ws_router
 from app.db.session import Base, engine
-import app.models.user        # noqa: F401 — register models with SQLAlchemy
-import app.models.transaction  # noqa: F401
-import app.models.budget       # noqa: F401
+import app.models.user           # noqa: F401 — register models with SQLAlchemy
+import app.models.transaction    # noqa: F401
+import app.models.budget         # noqa: F401
+import app.models.savings_goal   # noqa: F401
 
 logging.basicConfig(
     level=logging.INFO,
