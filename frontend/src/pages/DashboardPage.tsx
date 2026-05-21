@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useTransactionStore } from "@/store/transactionStore";
@@ -115,6 +116,13 @@ export default function DashboardPage() {
     <div className="dashboard">
       <header className="dash-header">
         <h1>💸 Finly</h1>
+        <nav style={{ display: "flex", gap: "1rem" }}>
+          <Link to="/dashboard" className="btn-ghost" style={{ color: "var(--accent2)" }}>Dashboard</Link>
+          <Link to="/trends" className="btn-ghost">Trends</Link>
+          <Link to="/budgets" className="btn-ghost">Budgets</Link>
+          <Link to="/rules" className="btn-ghost">Rules</Link>
+          <Link to="/savings" className="btn-ghost">Savings</Link>
+        </nav>
         <span>Hello, {user?.full_name}</span>
         <select
           className="currency-select"
@@ -246,6 +254,9 @@ export default function DashboardPage() {
               {importing ? "Importing…" : "Import CSV"}
             </button>
             <span className="import-hint">ING or ABN AMRO export</span>
+            <Link to="/import" className="import-hint" style={{ color: "var(--accent2)", textDecoration: "none" }}>
+              Other bank? Custom import →
+            </Link>
           </div>
 
           {importToast && (

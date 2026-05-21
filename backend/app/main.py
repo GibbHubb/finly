@@ -10,6 +10,9 @@ import app.models.user           # noqa: F401 — register models with SQLAlchem
 import app.models.transaction    # noqa: F401
 import app.models.budget         # noqa: F401
 import app.models.savings_goal   # noqa: F401
+import app.models.import_mapping # noqa: F401
+import app.models.categorisation_rule # noqa: F401
+import app.models.fx_rate         # noqa: F401
 
 logging.basicConfig(
     level=logging.INFO,

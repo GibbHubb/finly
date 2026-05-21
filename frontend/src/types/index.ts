@@ -15,6 +15,7 @@ export interface Transaction {
   description: string;
   transaction_date: string;
   currency: string;
+  base_amount: string | null;
   created_at: string;
 }
 
@@ -100,6 +101,61 @@ export interface RecurringItem {
   typical_day: number;
   months_detected: number;
   last_seen: string;
+}
+
+export interface MonthlyTrendEntry {
+  month: string;                          // YYYY-MM
+  categories: Record<string, string>;     // category -> amount as string (Decimal)
+}
+
+export type DateFormatKey =
+  | "DD-MM-YYYY" | "YYYY-MM-DD" | "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYYMMDD";
+
+export type DecimalFormat = "comma" | "dot";
+
+export interface ImportMappingPayload {
+  date_col: string;
+  amount_col: string;
+  description_col: string;
+  category_col?: string | null;
+  delimiter?: string | null;
+  date_format: DateFormatKey;
+  decimal_format: DecimalFormat;
+}
+
+export interface ImportPreview {
+  headers: string[];
+  sample_rows: Record<string, string>[];
+  delimiter: string;
+  saved_mapping: ImportMappingPayload | null;
+}
+
+export type MatchType = "contains" | "equals" | "starts_with" | "regex";
+
+export interface CategorisationRule {
+  id: number;
+  match_type: MatchType;
+  match_value: string;
+  category: Category;
+  priority: number;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface CategorisationRuleCreate {
+  match_type: MatchType;
+  match_value: string;
+  category: Category;
+  priority?: number;
+  enabled?: boolean;
+}
+
+export interface CategorisationRuleUpdate {
+  match_type?: MatchType;
+  match_value?: string;
+  category?: Category;
+  priority?: number;
+  enabled?: boolean;
 }
 
 export interface SavingsGoal {

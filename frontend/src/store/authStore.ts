@@ -10,7 +10,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   fetchMe: () => Promise<void>;
-  setBaseCurrency: (currency: string) => void;
+  setBaseCurrency: (currency: string) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -39,9 +39,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ user, baseCurrency: user.base_currency ?? "EUR" });
   },
 
-  setBaseCurrency: (currency) => {
+  setBaseCurrency: async (currency) => {
+    // Optimistic local update
+    const prev = get().baseCurrency;
     set({ baseCurrency: currency });
-    const user = get().user;
-    if (user) set({ user: { ...user, base_currency: currency } });
+    const u = get().user;
+    if (u) set({ user: { ...u, base_currency: currency } });
+    try {
+      const updated = await authService.updateMe({ base_currency: currency });
+      set({ user: updated, baseCurrency: updated.base_currency ?? currency });
+      // Refresh transactions so the new server-recomputed base_amount surfaces
+      const { useTransactionStore } = await import("@/store/transactionStore");
+      useTransactionStore.getState().fetch();
+    } catch {
+      // Roll back local state on failure
+      set({ baseCurrency: prev });
+      const cur = get().user;
+      if (cur) set({ user: { ...cur, base_currency: prev } });
+    }
   },
 }));

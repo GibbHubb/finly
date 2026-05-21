@@ -1,5 +1,5 @@
 import api from "./api";
-import type { ForecastResult, ImportResult, MonthlySummary, RecurringItem, Transaction, TransactionCreate, TransactionFilters } from "@/types";
+import type { ForecastResult, ImportMappingPayload, ImportPreview, ImportResult, MonthlySummary, MonthlyTrendEntry, RecurringItem, Transaction, TransactionCreate, TransactionFilters } from "@/types";
 
 export const transactionService = {
   async list(filters: TransactionFilters = {}): Promise<Transaction[]> {
@@ -41,6 +41,32 @@ export const transactionService = {
 
   async recurring(): Promise<RecurringItem[]> {
     const { data } = await api.get<RecurringItem[]>("/transactions/recurring");
+    return data;
+  },
+
+  async trends(months: number = 6): Promise<MonthlyTrendEntry[]> {
+    const { data } = await api.get<MonthlyTrendEntry[]>("/transactions/trends", {
+      params: { months },
+    });
+    return data;
+  },
+
+  async importPreview(file: File): Promise<ImportPreview> {
+    const form = new FormData();
+    form.append("file", file);
+    const { data } = await api.post<ImportPreview>("/transactions/import/preview", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return data;
+  },
+
+  async importCommit(file: File, mapping: ImportMappingPayload): Promise<ImportResult> {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("mapping", JSON.stringify(mapping));
+    const { data } = await api.post<ImportResult>("/transactions/import/commit", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
     return data;
   },
 };

@@ -7,15 +7,51 @@ from fastapi import HTTPException
 
 from app.models.transaction import Transaction, TransactionType
 from app.models.budget import Budget
+from app.models.user import User
 from app.schemas.transaction import TransactionCreate, TransactionUpdate
+from app.services.rates_service import convert_amount
+
+
+def _user_base_currency(user_id: int, db: Session) -> str:
+    user = db.query(User).filter(User.id == user_id).first()
+    return (user.base_currency if user else "EUR") or "EUR"
+
+
+def _compute_base_amount(tx: Transaction, base_currency: str, db: Session) -> Decimal | None:
+    """Best-effort conversion from tx.amount into the user's base currency."""
+    tx_currency = (tx.currency or "EUR").upper()
+    if tx_currency == base_currency.upper():
+        return Decimal(tx.amount).quantize(Decimal("0.01"))
+    return convert_amount(Decimal(tx.amount), tx_currency, base_currency, tx.transaction_date, db)
 
 
 def create_transaction(data: TransactionCreate, user_id: int, db: Session) -> Transaction:
-    tx = Transaction(**data.model_dump(), user_id=user_id)
+    base_currency = _user_base_currency(user_id, db)
+    payload = data.model_dump()
+    if payload.get("currency") is None:
+        payload["currency"] = base_currency
+    tx = Transaction(**payload, user_id=user_id)
+    tx.base_amount = _compute_base_amount(tx, base_currency, db)
     db.add(tx)
     db.commit()
     db.refresh(tx)
     return tx
+
+
+def recompute_all_base_amounts(user_id: int, db: Session) -> int:
+    """Recompute base_amount for every transaction of `user_id` — called when
+    the user changes their base currency. Returns how many rows were updated."""
+    base_currency = _user_base_currency(user_id, db)
+    txs = db.query(Transaction).filter(Transaction.user_id == user_id).all()
+    updated = 0
+    for tx in txs:
+        new_val = _compute_base_amount(tx, base_currency, db)
+        if new_val != tx.base_amount:
+            tx.base_amount = new_val
+            updated += 1
+    if updated:
+        db.commit()
+    return updated
 
 
 def get_user_transactions(
@@ -45,8 +81,11 @@ def get_monthly_summary(user_id: int, month: int, year: int, db: Session) -> dic
     Returns total income, total expenses, net, and a per-category breakdown
     that includes spent amount vs. budget limit (if set) for the given month/year.
     """
+    # Prefer base_amount (already converted to user's base currency); fall back
+    # to amount for pre-F12 rows that were never backfilled.
+    amount_expr = func.coalesce(Transaction.base_amount, Transaction.amount)
     rows = (
-        db.query(Transaction.category, Transaction.type, func.sum(Transaction.amount))
+        db.query(Transaction.category, Transaction.type, func.sum(amount_expr))
         .filter(
             Transaction.user_id == user_id,
             func.strftime("%m", Transaction.transaction_date) == f"{month:02d}",
@@ -100,12 +139,62 @@ def get_monthly_summary(user_id: int, month: int, year: int, db: Session) -> dic
     }
 
 
+def get_monthly_category_totals(user_id: int, months: int, db: Session) -> list[dict]:
+    """
+    Expense totals grouped by (month, category) for the last `months` months,
+    zero-filled so empty months still appear in the result. Oldest-first.
+    Month keys are 'YYYY-MM' strings.
+    """
+    today = date.today()
+    start_year, start_month = today.year, today.month - (months - 1)
+    while start_month <= 0:
+        start_month += 12
+        start_year -= 1
+    start = date(start_year, start_month, 1)
+
+    month_expr = func.strftime("%Y-%m", Transaction.transaction_date)
+    amount_expr = func.coalesce(Transaction.base_amount, Transaction.amount)
+    rows = (
+        db.query(
+            month_expr.label("month"),
+            Transaction.category,
+            func.sum(amount_expr).label("total"),
+        )
+        .filter(
+            Transaction.user_id == user_id,
+            Transaction.type == TransactionType.expense,
+            Transaction.transaction_date >= start,
+        )
+        .group_by(month_expr, Transaction.category)
+        .all()
+    )
+
+    skeleton: dict[str, dict[str, Decimal]] = {}
+    y, m = start_year, start_month
+    for _ in range(months):
+        skeleton[f"{y:04d}-{m:02d}"] = {}
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+
+    for month_key, category, total in rows:
+        cat_key = category.value if hasattr(category, "value") else str(category)
+        if month_key in skeleton:
+            skeleton[month_key][cat_key] = total
+
+    return [{"month": k, "categories": v} for k, v in skeleton.items()]
+
+
 def update_transaction(tx_id: int, user_id: int, data: TransactionUpdate, db: Session) -> Transaction:
     tx = db.query(Transaction).filter(Transaction.id == tx_id, Transaction.user_id == user_id).first()
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    for field, value in data.model_dump(exclude_none=True).items():
+    payload = data.model_dump(exclude_none=True)
+    for field, value in payload.items():
         setattr(tx, field, value)
+    if {"amount", "transaction_date"} & payload.keys():
+        tx.base_amount = _compute_base_amount(tx, _user_base_currency(user_id, db), db)
     db.commit()
     db.refresh(tx)
     return tx

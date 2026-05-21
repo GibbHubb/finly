@@ -83,3 +83,29 @@ chore(deps): bump fastapi to 0.111
 FastAPI auto-generates interactive docs at:
 - Swagger UI: http://localhost:8000/docs
 - ReDoc:       http://localhost:8000/redoc
+
+## End-to-end tests (Playwright)
+
+The `frontend/e2e/` directory contains Playwright specs covering the four
+core happy paths: login, add transaction, budget over-limit alert, savings
+goal progress.
+
+The suite spins up the FastAPI backend (with `E2E_MODE=1` exposing
+`/api/v1/test/reset`) and the Vite dev server automatically via
+`playwright.config.ts → webServer`.
+
+First-time setup (downloads ~200 MB of browser binaries):
+```bash
+cd frontend
+npm install
+npm run e2e:install
+```
+
+Run the suite:
+```bash
+npm run e2e         # headless
+npm run e2e:ui      # interactive Playwright UI mode
+```
+
+CI runs the same flow on every PR via `.github/workflows/e2e.yml`. Trace
+files are uploaded as artifacts on failure (`frontend/test-results/`).

@@ -51,8 +51,20 @@ def login_user(email: str, password: str, db: Session) -> Token:
 
 
 def update_user(user: User, data: UserUpdate, db: Session) -> User:
+    from app.services.rates_service import SUPPORTED_CURRENCIES
+    from app.services.transactions import recompute_all_base_amounts
+
     if data.full_name is not None:
         user.full_name = data.full_name
+
+    base_currency_changed = False
+    if data.base_currency is not None:
+        new_cur = data.base_currency.upper()
+        if new_cur not in SUPPORTED_CURRENCIES:
+            raise HTTPException(status_code=400, detail=f"Unsupported currency: {new_cur}")
+        if new_cur != user.base_currency:
+            user.base_currency = new_cur
+            base_currency_changed = True
 
     if data.new_password is not None:
         if not data.current_password:
@@ -63,4 +75,9 @@ def update_user(user: User, data: UserUpdate, db: Session) -> User:
 
     db.commit()
     db.refresh(user)
+
+    # After commit, recompute base_amount for every transaction so totals make sense.
+    if base_currency_changed:
+        recompute_all_base_amounts(user.id, db)
+
     return user

@@ -1,30 +1,53 @@
+import json
 from datetime import date
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.transaction import Category, TransactionType
 from app.models.user import User
 from app.schemas.transaction import (
+    ImportMappingPayload,
+    ImportPreviewOut,
     ImportResultOut,
     MonthlySummaryOut,
+    MonthlyTrendEntry,
     RecurringItemOut,
     TransactionCreate,
     TransactionOut,
     TransactionUpdate,
 )
 from app.services.auth import get_current_user
-from app.services.import_service import import_csv
+from app.services.import_service import (
+    commit_mapped_import,
+    get_saved_mapping,
+    import_csv,
+    parse_preview,
+)
 from app.services.transactions import (
     create_transaction,
     delete_transaction,
+    get_monthly_category_totals,
     get_monthly_summary,
     get_user_transactions,
     update_transaction,
 )
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
+
+
+@router.get("/trends", response_model=list[MonthlyTrendEntry])
+def monthly_trends(
+    months: int = Query(6, ge=1, le=24, description="Number of months to return (default 6)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Expense totals per category per month for the last N months.
+    Zero-filled — months with no transactions still appear with an empty categories map.
+    """
+    return get_monthly_category_totals(current_user.id, months, db)
 
 
 @router.get("/summary", response_model=MonthlySummaryOut)
@@ -146,3 +169,49 @@ async def import_transactions(
     """
     content = await file.read()
     return import_csv(content, current_user.id, db)
+
+
+@router.post("/import/preview", response_model=ImportPreviewOut)
+async def import_preview(
+    file: UploadFile = File(..., description="Any CSV file"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Inspect an uploaded CSV without persisting anything: returns detected
+    headers, delimiter, and the first 5 data rows. Also returns the caller's
+    previously-saved column mapping (if any) so the wizard can pre-fill.
+    """
+    content = await file.read()
+    preview = parse_preview(content)
+    saved = get_saved_mapping(current_user.id, db)
+    return {**preview, "saved_mapping": saved}
+
+
+@router.post("/import/commit", response_model=ImportResultOut)
+async def import_commit(
+    file: UploadFile = File(..., description="CSV file to import"),
+    mapping: str = Form(..., description="JSON-encoded ImportMappingPayload"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Import a CSV using a user-provided column mapping. On success, the mapping
+    is persisted so the next upload pre-fills the same choices.
+    """
+    try:
+        payload = ImportMappingPayload.model_validate_json(mapping)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid mapping JSON: {exc}")
+
+    content = await file.read()
+    return commit_mapped_import(content, payload.model_dump(), current_user.id, db)
+
+
+@router.get("/import/mapping", response_model=ImportMappingPayload | None)
+def import_mapping(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Returns the user's most-recent saved column mapping, or null if none."""
+    return get_saved_mapping(current_user.id, db)

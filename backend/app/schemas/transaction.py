@@ -12,6 +12,7 @@ class TransactionCreate(BaseModel):
     category: Category
     description: str = ""
     transaction_date: date
+    currency: str | None = None
 
     @field_validator("amount")
     @classmethod
@@ -20,12 +21,24 @@ class TransactionCreate(BaseModel):
             raise ValueError("Amount must be greater than zero")
         return v
 
+    @field_validator("currency")
+    @classmethod
+    def currency_supported(cls, v):
+        if v is None:
+            return v
+        from app.services.rates_service import SUPPORTED_CURRENCIES
+        upper = v.upper()
+        if upper not in SUPPORTED_CURRENCIES:
+            raise ValueError(f"Unsupported currency: {upper}")
+        return upper
+
 
 class TransactionUpdate(BaseModel):
     amount: Decimal | None = None
     category: Category | None = None
     description: str | None = None
     transaction_date: date | None = None
+    currency: str | None = None
 
 
 class TransactionOut(BaseModel):
@@ -35,6 +48,8 @@ class TransactionOut(BaseModel):
     category: Category
     description: str
     transaction_date: date
+    currency: str
+    base_amount: Decimal | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -77,3 +92,25 @@ class RecurringItemOut(BaseModel):
     typical_day: int
     months_detected: int
     last_seen: date
+
+
+class MonthlyTrendEntry(BaseModel):
+    month: str  # YYYY-MM
+    categories: dict[str, Decimal]
+
+
+class ImportMappingPayload(BaseModel):
+    date_col: str
+    amount_col: str
+    description_col: str
+    category_col: str | None = None
+    delimiter: str | None = None                     # None → auto-detect
+    date_format: str                                 # one of DD-MM-YYYY, YYYY-MM-DD, DD/MM/YYYY, MM/DD/YYYY, YYYYMMDD
+    decimal_format: str                              # "comma" or "dot"
+
+
+class ImportPreviewOut(BaseModel):
+    headers: list[str]
+    sample_rows: list[dict[str, str]]
+    delimiter: str
+    saved_mapping: ImportMappingPayload | None = None

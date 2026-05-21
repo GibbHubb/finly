@@ -19,4 +19,9 @@ export const authService = {
     const { data } = await api.get<User>("/auth/me");
     return data;
   },
+
+  async updateMe(payload: { full_name?: string; base_currency?: string }): Promise<User> {
+    const { data } = await api.patch<User>("/auth/me", payload);
+    return data;
+  },
 };

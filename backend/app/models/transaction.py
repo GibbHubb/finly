@@ -36,7 +36,11 @@ class Transaction(Base):
     description: Mapped[str] = mapped_column(String(500), default="")
     transaction_date: Mapped[date] = mapped_column(Date, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), default="EUR", server_default="EUR")
+    base_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     import_hash: Mapped[str | None] = mapped_column(Text, nullable=True, unique=True, index=True)
+    categorised_by_rule_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categorisation_rules.id"), nullable=True,
+    )
 
     owner: Mapped["User"] = relationship(back_populates="transactions")
