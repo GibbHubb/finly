@@ -14,6 +14,7 @@ from app.schemas.transaction import (
     MonthlySummaryOut,
     MonthlyTrendEntry,
     RecurringItemOut,
+    SplitRequest,
     TransactionCreate,
     TransactionOut,
     TransactionUpdate,
@@ -31,6 +32,8 @@ from app.services.transactions import (
     get_monthly_category_totals,
     get_monthly_summary,
     get_user_transactions,
+    split_transaction,
+    unsplit_transaction,
     update_transaction,
 )
 
@@ -215,3 +218,24 @@ def import_mapping(
 ):
     """Returns the user's most-recent saved column mapping, or null if none."""
     return get_saved_mapping(current_user.id, db)
+
+
+# F25 — split a transaction into >=2 child rows (must sum exactly to parent).
+@router.post("/{tx_id}/split", response_model=TransactionOut)
+def split(
+    tx_id: int,
+    body: SplitRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return split_transaction(tx_id, current_user.id, body.children, db)
+
+
+@router.delete("/{tx_id}/split", response_model=TransactionOut)
+def unsplit(
+    tx_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Revert a split: deletes children, parent becomes a normal row."""
+    return unsplit_transaction(tx_id, current_user.id, db)

@@ -42,5 +42,21 @@ class Transaction(Base):
     categorised_by_rule_id: Mapped[int | None] = mapped_column(
         ForeignKey("categorisation_rules.id"), nullable=True,
     )
+    # F25 — split transactions: a transaction with `parent_transaction_id`
+    # set is a child line of its parent. The parent row stays as the
+    # immutable bank-truth record; children carry the category breakdown.
+    # Aggregations (monthly summary, category totals, list) must exclude
+    # any transaction that has children (see _excluding_split_parents()
+    # in services) to avoid double-counting parent + children.
+    parent_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"), nullable=True, index=True,
+    )
 
     owner: Mapped["User"] = relationship(back_populates="transactions")
+    parent: Mapped["Transaction | None"] = relationship(
+        "Transaction", remote_side="Transaction.id", back_populates="children",
+    )
+    children: Mapped[list["Transaction"]] = relationship(
+        "Transaction", back_populates="parent",
+        cascade="all, delete-orphan", single_parent=True,
+    )

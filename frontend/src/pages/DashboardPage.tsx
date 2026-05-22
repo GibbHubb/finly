@@ -4,8 +4,9 @@ import { useAuthStore } from "@/store/authStore";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useTransactionStore } from "@/store/transactionStore";
 import { useTransactionSocket } from "@/hooks/useTransactionSocket";
-import type { TransactionCreate, Category, ImportResult, BudgetAlert } from "@/types";
+import type { TransactionCreate, Category, ImportResult, BudgetAlert, Transaction } from "@/types";
 import { formatCurrency, formatDate } from "@/utils/format";
+import SplitTransactionModal from "@/components/SplitTransactionModal";
 
 const CURRENCIES = ["EUR", "USD", "GBP", "SEK", "NOK", "DKK"];
 import {
@@ -24,7 +25,8 @@ const CONFIDENCE_COLOR: Record<string, string> = {
 export default function DashboardPage() {
   const { user, logout, baseCurrency, setBaseCurrency } = useAuthStore();
   const { transactions, totalIncome, totalExpense, balance, isLoading } = useTransactions();
-  const { add, remove, fetchForecast, forecast, forecastLoading, importCsv, fetchRecurring, recurring, recurringLoading } = useTransactionStore();
+  const { add, remove, fetch: refetchTransactions, fetchForecast, forecast, forecastLoading, importCsv, fetchRecurring, recurring, recurringLoading } = useTransactionStore();
+  const [splitTx, setSplitTx] = useState<Transaction | null>(null);  // F25
 
   // Budget alert toasts
   const [budgetAlerts, setBudgetAlerts] = useState<BudgetAlert[]>([]);
@@ -359,6 +361,17 @@ export default function DashboardPage() {
                     <span className="tx-currency">{tx.currency}</span>
                   )}
                 </span>
+                {/* F25 — split an expense into multiple categories */}
+                {tx.type === "expense" && tx.parent_transaction_id == null && (
+                  <button
+                    onClick={() => setSplitTx(tx)}
+                    className="btn-del"
+                    title="Split this transaction into multiple categories"
+                    style={{ fontSize: "0.85rem" }}
+                  >
+                    ✂︎
+                  </button>
+                )}
                 <button onClick={() => remove(tx.id)} className="btn-del">✕</button>
               </div>
             </div>
@@ -377,6 +390,15 @@ export default function DashboardPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* F25 — split modal */}
+      {splitTx && (
+        <SplitTransactionModal
+          tx={splitTx}
+          onClose={() => setSplitTx(null)}
+          onSplit={() => refetchTransactions()}
+        />
       )}
     </div>
   );

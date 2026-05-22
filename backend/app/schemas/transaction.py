@@ -51,8 +51,27 @@ class TransactionOut(BaseModel):
     currency: str
     base_amount: Decimal | None = None
     created_at: datetime
+    parent_transaction_id: int | None = None  # F25 — split child rows reference parent
 
     model_config = {"from_attributes": True}
+
+
+# F25 — split a transaction into ≥2 children that sum exactly to the parent.
+class SplitChildIn(BaseModel):
+    amount: Decimal
+    category: Category
+    description: str = ""
+
+    @field_validator("amount")
+    @classmethod
+    def amount_must_be_positive(cls, v):
+        if v <= 0:
+            raise ValueError("Split-child amount must be greater than zero")
+        return v
+
+
+class SplitRequest(BaseModel):
+    children: list[SplitChildIn]
 
 
 class CategorySummary(BaseModel):

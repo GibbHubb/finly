@@ -17,6 +17,7 @@ export interface Transaction {
   currency: string;
   base_amount: string | null;
   created_at: string;
+  parent_transaction_id?: number | null;  // F25 — child rows of a split parent
 }
 
 export type Category =

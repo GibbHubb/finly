@@ -16,6 +16,20 @@ export const transactionService = {
     await api.delete(`/transactions/${id}`);
   },
 
+  // F25 — split a transaction into >=2 children that sum exactly to the parent.
+  async split(
+    id: number,
+    children: { amount: number | string; category: string; description?: string }[],
+  ): Promise<Transaction> {
+    const { data } = await api.post<Transaction>(`/transactions/${id}/split`, { children });
+    return data;
+  },
+
+  async unsplit(id: number): Promise<Transaction> {
+    const { data } = await api.delete<Transaction>(`/transactions/${id}/split`);
+    return data;
+  },
+
   async summary(month: number, year: number): Promise<MonthlySummary> {
     const { data } = await api.get<MonthlySummary>("/transactions/summary", {
       params: { month, year },
