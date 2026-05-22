@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useTransactionStore } from "@/store/transactionStore";
@@ -27,6 +27,7 @@ export default function DashboardPage() {
   const { transactions, totalIncome, totalExpense, balance, isLoading } = useTransactions();
   const { add, remove, fetch: refetchTransactions, fetchForecast, forecast, forecastLoading, importCsv, fetchRecurring, recurring, recurringLoading } = useTransactionStore();
   const [splitTx, setSplitTx] = useState<Transaction | null>(null);  // F25
+  const navigate = useNavigate();  // F26 — drill-down from pie slice
 
   // Budget alert toasts
   const [budgetAlerts, setBudgetAlerts] = useState<BudgetAlert[]>([]);
@@ -190,7 +191,17 @@ export default function DashboardPage() {
           <h3>Spending by Category</h3>
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
-              <Pie data={expenseByCategory} dataKey="amount" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2}>
+              <Pie
+                data={expenseByCategory}
+                dataKey="amount"
+                nameKey="name"
+                cx="50%" cy="50%"
+                innerRadius={50}
+                outerRadius={80}
+                paddingAngle={2}
+                cursor="pointer"
+                onClick={(d: any) => d?.name && navigate(`/category/${d.name}`)}
+              >
                 {expenseByCategory.map((e, i) => <Cell key={i} fill={e.fill} />)}
               </Pie>
               <Tooltip formatter={(v: number) => formatCurrency(v)} />

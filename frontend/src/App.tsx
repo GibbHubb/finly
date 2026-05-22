@@ -9,6 +9,7 @@ import SavingsPage from "@/pages/SavingsPage";
 import TrendsPage from "@/pages/TrendsPage";
 import ImportPage from "@/pages/ImportPage";
 import RulesPage from "@/pages/RulesPage";
+import CategoryDrilldownPage from "@/pages/CategoryDrilldownPage";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { token } = useAuthStore();
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="/import" element={<RequireAuth><ImportPage /></RequireAuth>} />
         <Route path="/rules" element={<RequireAuth><RulesPage /></RequireAuth>} />
         <Route path="/savings" element={<RequireAuth><SavingsPage /></RequireAuth>} />
+        <Route path="/category/:name" element={<RequireAuth><CategoryDrilldownPage /></RequireAuth>} />
       </Routes>
     </BrowserRouter>
   );
