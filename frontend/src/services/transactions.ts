@@ -114,6 +114,35 @@ export const bankService = {
 };
 
 
+// F29 — tag CRUD + per-transaction assign/unassign helpers.
+export interface TagBrief {
+  id: number;
+  name: string;
+}
+
+export const tagService = {
+  async list(): Promise<TagBrief[]> {
+    const { data } = await api.get<TagBrief[]>("/tags");
+    return data;
+  },
+  async create(name: string): Promise<TagBrief> {
+    const { data } = await api.post<TagBrief>("/tags", { name });
+    return data;
+  },
+  async remove(id: number): Promise<void> {
+    await api.delete(`/tags/${id}`);
+  },
+  async assign(txId: number, name: string): Promise<TagBrief[]> {
+    const { data } = await api.post<TagBrief[]>(`/tags/assign/${txId}`, { name });
+    return data;
+  },
+  async unassign(txId: number, tagId: number): Promise<TagBrief[]> {
+    const { data } = await api.delete<TagBrief[]>(`/tags/assign/${txId}/${tagId}`);
+    return data;
+  },
+};
+
+
 // F28 — year-end PDF download helper. Uses the api axios instance so the
 // JWT auth header travels with the request; converts the binary response
 // to a blob and triggers a browser download.

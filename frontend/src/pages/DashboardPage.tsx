@@ -7,7 +7,7 @@ import { useTransactionSocket } from "@/hooks/useTransactionSocket";
 import type { TransactionCreate, Category, ImportResult, BudgetAlert, Transaction } from "@/types";
 import { formatCurrency, formatDate } from "@/utils/format";
 import SplitTransactionModal from "@/components/SplitTransactionModal";
-import { bankService, downloadYearReview, type BankStatus } from "@/services/transactions";
+import { bankService, downloadYearReview, tagService, type BankStatus } from "@/services/transactions";
 
 const CURRENCIES = ["EUR", "USD", "GBP", "SEK", "NOK", "DKK"];
 import {
@@ -446,6 +446,34 @@ export default function DashboardPage() {
                 <span className="tx-cat">{tx.category}</span>
                 <span className="tx-desc">{tx.description}</span>
                 <span className="tx-date">{formatDate(tx.transaction_date)}</span>
+                {/* F29 — tag chips (read-only); add via the # button on the right. */}
+                {tx.tags && tx.tags.length > 0 && (
+                  <span style={{ marginLeft: "0.4rem" }}>
+                    {tx.tags.map((t) => (
+                      <span
+                        key={t.id}
+                        title="Click ✕ to remove"
+                        onClick={async () => {
+                          await tagService.unassign(tx.id, t.id);
+                          refetchTransactions();
+                        }}
+                        style={{
+                          display: "inline-block",
+                          marginRight: "0.25rem",
+                          padding: "0.05rem 0.4rem",
+                          fontSize: "0.7rem",
+                          background: "rgba(99,102,241,0.18)",
+                          border: "1px solid rgba(99,102,241,0.4)",
+                          borderRadius: "0.7rem",
+                          color: "#a5b4fc",
+                          cursor: "pointer",
+                        }}
+                      >
+                        #{t.name}
+                      </span>
+                    ))}
+                  </span>
+                )}
               </div>
               <div className="tx-right">
                 <span className="tx-amount" title={tx.currency !== baseCurrency ? `${tx.currency} original` : undefined}>
@@ -465,6 +493,20 @@ export default function DashboardPage() {
                     ✂︎
                   </button>
                 )}
+                {/* F29 — add a tag (prompt-based v1) */}
+                <button
+                  onClick={async () => {
+                    const name = window.prompt("Tag name:");
+                    if (!name || !name.trim()) return;
+                    await tagService.assign(tx.id, name.trim());
+                    refetchTransactions();
+                  }}
+                  className="btn-del"
+                  title="Add a tag to this transaction"
+                  style={{ fontSize: "0.85rem" }}
+                >
+                  #
+                </button>
                 <button onClick={() => remove(tx.id)} className="btn-del">✕</button>
               </div>
             </div>

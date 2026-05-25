@@ -18,6 +18,7 @@ export interface Transaction {
   base_amount: string | null;
   created_at: string;
   parent_transaction_id?: number | null;  // F25 — child rows of a split parent
+  tags?: { id: number; name: string }[];  // F29
 }
 
 export type Category =
@@ -40,6 +41,7 @@ export interface TransactionFilters {
   date_to?: string;
   category?: Category;
   type?: "income" | "expense";
+  tag?: string;  // F29
 }
 
 export interface CategorySummary {

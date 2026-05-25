@@ -14,6 +14,7 @@ import app.models.import_mapping # noqa: F401
 import app.models.categorisation_rule # noqa: F401
 import app.models.fx_rate         # noqa: F401
 import app.models.bank_connection  # noqa: F401  — F27
+import app.models.tag               # noqa: F401  — F29
 
 logging.basicConfig(
     level=logging.INFO,

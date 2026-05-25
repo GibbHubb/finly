@@ -7,6 +7,7 @@ from fastapi import HTTPException
 
 from app.models.transaction import Transaction, TransactionType
 from app.models.budget import Budget
+from app.models.tag import Tag, transaction_tags  # F29
 from app.models.user import User
 from app.schemas.transaction import TransactionCreate, TransactionUpdate, SplitChildIn
 from app.services.rates_service import convert_amount
@@ -77,6 +78,7 @@ def get_user_transactions(
     date_to: date | None = None,
     category: str | None = None,
     tx_type: TransactionType | None = None,
+    tag: str | None = None,  # F29 — filter by tag name (user-scoped)
 ):
     q = db.query(Transaction).filter(Transaction.user_id == user_id)
     if date_from:
@@ -87,6 +89,13 @@ def get_user_transactions(
         q = q.filter(Transaction.category == category)
     if tx_type:
         q = q.filter(Transaction.type == tx_type)
+    if tag:
+        norm = tag.strip().lower()
+        q = (
+            q.join(transaction_tags, transaction_tags.c.transaction_id == Transaction.id)
+            .join(Tag, Tag.id == transaction_tags.c.tag_id)
+            .filter(Tag.user_id == user_id, Tag.name == norm)
+        )
     q = _excluding_split_parents(q)  # F25 — don't double-count split parents
     return q.order_by(Transaction.transaction_date.desc()).offset(skip).limit(limit).all()
 

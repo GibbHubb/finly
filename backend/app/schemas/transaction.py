@@ -41,6 +41,13 @@ class TransactionUpdate(BaseModel):
     currency: str | None = None
 
 
+class TagBrief(BaseModel):
+    id: int
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
 class TransactionOut(BaseModel):
     id: int
     amount: Decimal
@@ -52,6 +59,7 @@ class TransactionOut(BaseModel):
     base_amount: Decimal | None = None
     created_at: datetime
     parent_transaction_id: int | None = None  # F25 — split child rows reference parent
+    tags: list[TagBrief] = []  # F29
 
     model_config = {"from_attributes": True}
 

@@ -60,3 +60,7 @@ class Transaction(Base):
         "Transaction", back_populates="parent",
         cascade="all, delete-orphan", single_parent=True,
     )
+    # F29 — free-form tags (M2M, user-scoped).
+    tags = relationship(
+        "Tag", secondary="transaction_tags", back_populates="transactions",
+    )

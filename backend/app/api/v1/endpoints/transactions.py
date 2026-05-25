@@ -75,6 +75,7 @@ def list_transactions(
     date_to: date | None = Query(None, description="Filter to date (inclusive), e.g. 2024-12-31"),
     category: Category | None = Query(None, description="Filter by category"),
     type: TransactionType | None = Query(None, description="Filter by type: income or expense"),
+    tag: str | None = Query(None, description="Filter by tag name (F29)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -85,6 +86,7 @@ def list_transactions(
         date_to=date_to,
         category=category.value if category else None,
         tx_type=type,
+        tag=tag,
     )
 
 
