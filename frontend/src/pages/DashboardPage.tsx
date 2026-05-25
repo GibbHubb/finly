@@ -7,6 +7,7 @@ import { useTransactionSocket } from "@/hooks/useTransactionSocket";
 import type { TransactionCreate, Category, ImportResult, BudgetAlert, Transaction } from "@/types";
 import { formatCurrency, formatDate } from "@/utils/format";
 import SplitTransactionModal from "@/components/SplitTransactionModal";
+import { bankService, type BankStatus } from "@/services/transactions";
 
 const CURRENCIES = ["EUR", "USD", "GBP", "SEK", "NOK", "DKK"];
 import {
@@ -28,6 +29,48 @@ export default function DashboardPage() {
   const { add, remove, fetch: refetchTransactions, fetchForecast, forecast, forecastLoading, importCsv, fetchRecurring, recurring, recurringLoading } = useTransactionStore();
   const [splitTx, setSplitTx] = useState<Transaction | null>(null);  // F25
   const navigate = useNavigate();  // F26 — drill-down from pie slice
+  const [banks, setBanks] = useState<BankStatus[]>([]);  // F27
+  const [bankBusy, setBankBusy] = useState(false);  // F27
+  const [bankMsg, setBankMsg] = useState<string | null>(null);  // F27
+
+  // F27 — load bank-connection status on mount
+  useEffect(() => {
+    bankService.status().then(setBanks).catch(() => setBanks([]));
+  }, []);
+
+  const handleConnectBank = async () => {
+    setBankBusy(true);
+    setBankMsg(null);
+    try {
+      const r = await bankService.connect();
+      // Open the GoCardless hosted consent screen; user returns to /bank/callback
+      window.open(r.link, "_blank", "noopener");
+      setBankMsg("Consent screen opened — complete it and return here.");
+    } catch (err: any) {
+      setBankMsg(err?.response?.data?.detail || "Bank connect failed (check GOCARDLESS_* env vars)");
+    } finally {
+      setBankBusy(false);
+    }
+  };
+
+  const handleBankSync = async () => {
+    setBankBusy(true);
+    setBankMsg(null);
+    try {
+      const r = await bankService.syncNow();
+      const totals = r.results.reduce(
+        (acc, x) => ({ ins: acc.ins + x.inserted, skip: acc.skip + x.skipped }),
+        { ins: 0, skip: 0 },
+      );
+      setBankMsg(`Synced ${r.connections} connection(s): +${totals.ins} new, ${totals.skip} skipped`);
+      bankService.status().then(setBanks).catch(() => undefined);
+      refetchTransactions();
+    } catch (err: any) {
+      setBankMsg(err?.response?.data?.detail || "Sync failed");
+    } finally {
+      setBankBusy(false);
+    }
+  };
 
   // Budget alert toasts
   const [budgetAlerts, setBudgetAlerts] = useState<BudgetAlert[]>([]);
@@ -270,6 +313,35 @@ export default function DashboardPage() {
             <Link to="/import" className="import-hint" style={{ color: "var(--accent2)", textDecoration: "none" }}>
               Other bank? Custom import →
             </Link>
+          </div>
+
+          {/* F27 — Connect bank (GoCardless sandbox) */}
+          <div className="import-section" style={{ marginTop: "0.5rem", flexDirection: "column", alignItems: "flex-start", gap: "0.4rem" }}>
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+              <button type="button" className="btn-import" onClick={handleConnectBank} disabled={bankBusy}>
+                🏦 Connect bank
+              </button>
+              {banks.length > 0 && (
+                <button type="button" className="btn-import" onClick={handleBankSync} disabled={bankBusy}>
+                  ↻ Sync now
+                </button>
+              )}
+              <span className="import-hint">GoCardless sandbox (NL banks)</span>
+            </div>
+            {banks.length > 0 && (
+              <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
+                {banks.map((b) => (
+                  <div key={b.id}>
+                    {b.institution_id} · <strong>{b.status}</strong>
+                    {b.last_sync_at && ` · last sync ${new Date(b.last_sync_at).toLocaleString()}`}
+                    {b.last_error && ` · ⚠ ${b.last_error}`}
+                  </div>
+                ))}
+              </div>
+            )}
+            {bankMsg && (
+              <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>{bankMsg}</div>
+            )}
           </div>
 
           {importToast && (

@@ -84,3 +84,31 @@ export const transactionService = {
     return data;
   },
 };
+
+
+// F27 — GoCardless bank connection helpers.
+export interface BankStatus {
+  id: number;
+  institution_id: string;
+  institution_name: string | null;
+  status: string;
+  last_sync_at: string | null;
+  last_error: string | null;
+}
+
+export const bankService = {
+  async connect(): Promise<{ requisition_id: string; link: string; connection_id: number }> {
+    const { data } = await api.post("/bank/connect");
+    return data;
+  },
+
+  async status(): Promise<BankStatus[]> {
+    const { data } = await api.get<BankStatus[]>("/bank/status");
+    return data;
+  },
+
+  async syncNow(): Promise<{ connections: number; results: Array<{ connection_id: number; inserted: number; skipped: number; error: string | null }> }> {
+    const { data } = await api.post("/bank/sync");
+    return data;
+  },
+};

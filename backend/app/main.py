@@ -13,6 +13,7 @@ import app.models.savings_goal   # noqa: F401
 import app.models.import_mapping # noqa: F401
 import app.models.categorisation_rule # noqa: F401
 import app.models.fx_rate         # noqa: F401
+import app.models.bank_connection  # noqa: F401  — F27
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,3 +45,45 @@ app.include_router(ws_router)
 def health():
     logger.info("Health check requested")
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# F27 — Nightly bank-sync scheduler (APScheduler, in-process). No-ops when
+# GoCardless creds aren't configured, so dev still boots cleanly.
+# ---------------------------------------------------------------------------
+@app.on_event("startup")
+def _start_bank_sync_scheduler():
+    from app.core.config import settings as _settings
+    if not (_settings.GOCARDLESS_SECRET_ID and _settings.GOCARDLESS_SECRET_KEY):
+        logger.info("F27 scheduler: GoCardless creds not set, nightly sync disabled")
+        return
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+    except ImportError:
+        logger.warning("F27 scheduler: apscheduler not installed; pip install apscheduler")
+        return
+    from app.db.session import SessionLocal
+    from app.services.bank_sync_service import sync_all_active
+
+    def _job():
+        db = SessionLocal()
+        try:
+            res = sync_all_active(db)
+            logger.info("F27 nightly sync: %s", res)
+        except Exception as exc:  # never let the job crash the scheduler
+            logger.exception("F27 nightly sync failed: %s", exc)
+        finally:
+            db.close()
+
+    sched = BackgroundScheduler()
+    sched.add_job(_job, "interval", hours=_settings.SYNC_INTERVAL_HOURS, id="bank_sync")
+    sched.start()
+    app.state.bank_sync_scheduler = sched
+    logger.info("F27 scheduler: nightly bank sync every %sh", _settings.SYNC_INTERVAL_HOURS)
+
+
+@app.on_event("shutdown")
+def _stop_bank_sync_scheduler():
+    sched = getattr(app.state, "bank_sync_scheduler", None)
+    if sched:
+        sched.shutdown(wait=False)
