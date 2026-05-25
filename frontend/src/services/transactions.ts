@@ -112,3 +112,18 @@ export const bankService = {
     return data;
   },
 };
+
+
+// F28 — year-end PDF download helper. Uses the api axios instance so the
+// JWT auth header travels with the request; converts the binary response
+// to a blob and triggers a browser download.
+export async function downloadYearReview(year: number): Promise<void> {
+  const res = await api.get(`/reports/year/${year}.pdf`, { responseType: "blob" });
+  const blob = new Blob([res.data], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `finly-${year}-review.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
+}

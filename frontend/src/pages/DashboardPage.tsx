@@ -7,7 +7,7 @@ import { useTransactionSocket } from "@/hooks/useTransactionSocket";
 import type { TransactionCreate, Category, ImportResult, BudgetAlert, Transaction } from "@/types";
 import { formatCurrency, formatDate } from "@/utils/format";
 import SplitTransactionModal from "@/components/SplitTransactionModal";
-import { bankService, type BankStatus } from "@/services/transactions";
+import { bankService, downloadYearReview, type BankStatus } from "@/services/transactions";
 
 const CURRENCIES = ["EUR", "USD", "GBP", "SEK", "NOK", "DKK"];
 import {
@@ -313,6 +313,16 @@ export default function DashboardPage() {
             <Link to="/import" className="import-hint" style={{ color: "var(--accent2)", textDecoration: "none" }}>
               Other bank? Custom import →
             </Link>
+            {/* F28 — year-end PDF report */}
+            <button
+              type="button"
+              className="btn-import"
+              onClick={() => downloadYearReview(new Date().getFullYear()).catch(() => {})}
+              title="Download a one-page PDF summary of this year"
+              style={{ marginLeft: "auto" }}
+            >
+              📄 Year in review
+            </button>
           </div>
 
           {/* F27 — Connect bank (GoCardless sandbox) */}
