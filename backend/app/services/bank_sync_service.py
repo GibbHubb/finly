@@ -77,8 +77,9 @@ def sync_connection(conn: BankConnection, db: Session) -> dict:
         req = gc.get_requisition(conn.requisition_id)
         accounts = req.get("accounts") or []
         if not accounts:
-            conn.status = "error"
-            conn.last_error = "Requisition has no accounts (consent may have lapsed)"
+            # F31 — no accounts means consent lapsed; distinct from transient error.
+            conn.status = "expired"
+            conn.last_error = "Requisition has no accounts — consent has likely lapsed. Please reconnect."
             return {"inserted": 0, "skipped": 0, "error": conn.last_error}
         conn.account_id = accounts[0]
 
@@ -86,9 +87,13 @@ def sync_connection(conn: BankConnection, db: Session) -> dict:
         data = gc.fetch_transactions(conn.account_id)
     except gc.GoCardlessError as exc:
         if exc.status in (401, 403):
-            conn.status = "error"
-            conn.last_error = f"Auth failed ({exc.status}) — re-consent required"
+            # F31 — auth/consent failure: use distinct "expired" status so the
+            # frontend can render a Reconnect CTA instead of a generic error.
+            conn.status = "expired"
+            conn.last_error = f"Auth failed ({exc.status}) — consent has expired. Please reconnect."
         else:
+            # Transient / unexpected error — keep "error" so it retries next sync.
+            conn.status = "error"
             conn.last_error = str(exc)
         return {"inserted": 0, "skipped": 0, "error": conn.last_error}
 

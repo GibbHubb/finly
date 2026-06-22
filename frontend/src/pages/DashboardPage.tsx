@@ -7,7 +7,8 @@ import { useTransactionSocket } from "@/hooks/useTransactionSocket";
 import type { TransactionCreate, Category, ImportResult, BudgetAlert, Transaction } from "@/types";
 import { formatCurrency, formatDate } from "@/utils/format";
 import SplitTransactionModal from "@/components/SplitTransactionModal";
-import { bankService, downloadYearReview, tagService, type BankStatus } from "@/services/transactions";
+import { bankService, downloadYearReview, tagService, transactionService, type BankStatus, type TagBrief } from "@/services/transactions";
+import TransactionFilter from "@/components/ui/TransactionFilter";
 
 const CURRENCIES = ["EUR", "USD", "GBP", "SEK", "NOK", "DKK"];
 import {
@@ -99,9 +100,25 @@ export default function DashboardPage() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterAmountMin, setFilterAmountMin] = useState("");
   const [filterAmountMax, setFilterAmountMax] = useState("");
-  const hasActiveFilters = filterText || filterCategory !== "all" || filterDateFrom || filterDateTo || filterAmountMin || filterAmountMax;
+
+  // F30 — tag filter state (kept here; TransactionFilter is purely presentational)
+  const [availableTags, setAvailableTags] = useState<TagBrief[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  // Separate working list for tag-filtered results so chart source arrays are unaffected
+  const [tagFilteredList, setTagFilteredList] = useState<Transaction[] | null>(null);
+
+  const hasActiveFilters = !!(filterText || filterCategory !== "all" || filterDateFrom || filterDateTo || filterAmountMin || filterAmountMax || selectedTags.length > 0);
+
   const clearFilters = () => {
     setFilterText(""); setFilterCategory("all"); setFilterDateFrom(""); setFilterDateTo(""); setFilterAmountMin(""); setFilterAmountMax("");
+    setSelectedTags([]);
+    setTagFilteredList(null);
+  };
+
+  const handleToggleTag = (name: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(name) ? prev.filter((t) => t !== name) : [...prev, name]
+    );
   };
 
   // Fetch forecast + recurring on mount
@@ -109,6 +126,48 @@ export default function DashboardPage() {
     fetchForecast(now.getMonth() + 1, now.getFullYear());
     fetchRecurring();
   }, []);
+
+  // F30 — load available tags on mount
+  useEffect(() => {
+    tagService.list().then(setAvailableTags).catch(() => setAvailableTags([]));
+  }, []);
+
+  // F30 — tag-filtered fetch: one request per selected tag, results merged & de-duped by id.
+  // Stored in tagFilteredList (separate from transactions) so charts are unaffected.
+  useEffect(() => {
+    if (selectedTags.length === 0) {
+      setTagFilteredList(null);
+      return;
+    }
+    let cancelled = false;
+    const fetchTagged = async () => {
+      try {
+        const results = await Promise.all(
+          selectedTags.map((tag) => transactionService.list({ tag }))
+        );
+        if (cancelled) return;
+        // Merge and de-dupe by id
+        const seen = new Set<number>();
+        const merged: Transaction[] = [];
+        for (const batch of results) {
+          for (const tx of batch) {
+            if (!seen.has(tx.id)) {
+              seen.add(tx.id);
+              merged.push(tx);
+            }
+          }
+        }
+        // Sort by date descending to match normal list order
+        merged.sort((a, b) => b.transaction_date.localeCompare(a.transaction_date));
+        setTagFilteredList(merged);
+      } catch {
+        // On error, fall back to unfiltered list
+        if (!cancelled) setTagFilteredList(null);
+      }
+    };
+    fetchTagged();
+    return () => { cancelled = true; };
+  }, [selectedTags]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -341,10 +400,24 @@ export default function DashboardPage() {
             {banks.length > 0 && (
               <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
                 {banks.map((b) => (
-                  <div key={b.id}>
-                    {b.institution_id} · <strong>{b.status}</strong>
-                    {b.last_sync_at && ` · last sync ${new Date(b.last_sync_at).toLocaleString()}`}
-                    {b.last_error && ` · ⚠ ${b.last_error}`}
+                  <div key={b.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                    <span>
+                      {b.institution_id} · <strong>{b.status}</strong>
+                      {b.last_sync_at && ` · last sync ${new Date(b.last_sync_at).toLocaleString()}`}
+                      {b.last_error && ` · ⚠ ${b.last_error}`}
+                    </span>
+                    {/* F31 — show Reconnect CTA when consent has expired */}
+                    {b.needs_reconnect && (
+                      <button
+                        type="button"
+                        className="btn-import"
+                        onClick={handleConnectBank}
+                        disabled={bankBusy}
+                        style={{ fontSize: "0.75rem", padding: "0.15rem 0.5rem" }}
+                      >
+                        Reconnect
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -368,66 +441,31 @@ export default function DashboardPage() {
         <div className="tx-list">
           <h3>Recent Transactions</h3>
 
-          {/* F8 — filter bar */}
-          <div className="tx-filter-bar">
-            <input
-              type="text"
-              placeholder="🔍 Search description or category..."
-              value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-              className="tx-filter-search"
-            />
-            <div className="tx-filter-row">
-              <select
-                value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value as Category | "all")}
-                className="tx-filter-input"
-              >
-                <option value="all">All categories</option>
-                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <input
-                type="date"
-                value={filterDateFrom}
-                onChange={(e) => setFilterDateFrom(e.target.value)}
-                className="tx-filter-input"
-                title="From"
-              />
-              <input
-                type="date"
-                value={filterDateTo}
-                onChange={(e) => setFilterDateTo(e.target.value)}
-                className="tx-filter-input"
-                title="To"
-              />
-              <input
-                type="number"
-                placeholder="Min €"
-                value={filterAmountMin}
-                onChange={(e) => setFilterAmountMin(e.target.value)}
-                className="tx-filter-input tx-filter-num"
-                step="0.01"
-              />
-              <input
-                type="number"
-                placeholder="Max €"
-                value={filterAmountMax}
-                onChange={(e) => setFilterAmountMax(e.target.value)}
-                className="tx-filter-input tx-filter-num"
-                step="0.01"
-              />
-              {hasActiveFilters && (
-                <button onClick={clearFilters} className="tx-filter-clear" type="button">Clear</button>
-              )}
-            </div>
-          </div>
+          {/* F8 + F30 — filter bar (extracted to TransactionFilter; state owned here) */}
+          <TransactionFilter
+            filterText={filterText} setFilterText={setFilterText}
+            filterCategory={filterCategory} setFilterCategory={setFilterCategory}
+            filterDateFrom={filterDateFrom} setFilterDateFrom={setFilterDateFrom}
+            filterDateTo={filterDateTo} setFilterDateTo={setFilterDateTo}
+            filterAmountMin={filterAmountMin} setFilterAmountMin={setFilterAmountMin}
+            filterAmountMax={filterAmountMax} setFilterAmountMax={setFilterAmountMax}
+            hasActiveFilters={hasActiveFilters}
+            onClear={clearFilters}
+            availableTags={availableTags}
+            selectedTags={selectedTags}
+            onToggleTag={handleToggleTag}
+          />
 
           {isLoading && <p>Loading…</p>}
           {(() => {
+            // F30: when tags are selected, start from the tag-filtered working list
+            // (separate from `transactions` so charts are unaffected).
+            // When no tags selected, fall back to the normal full list.
+            const baseList = tagFilteredList !== null ? tagFilteredList : transactions;
             const searchLower = filterText.toLowerCase();
             const min = filterAmountMin ? parseFloat(filterAmountMin) : null;
             const max = filterAmountMax ? parseFloat(filterAmountMax) : null;
-            const filtered = transactions.filter((tx) => {
+            const filtered = baseList.filter((tx) => {
               if (searchLower && !tx.description.toLowerCase().includes(searchLower) && !tx.category.toLowerCase().includes(searchLower)) return false;
               if (filterCategory !== "all" && tx.category !== filterCategory) return false;
               if (filterDateFrom && tx.transaction_date < filterDateFrom) return false;

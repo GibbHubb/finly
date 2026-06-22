@@ -5,6 +5,7 @@ alembic==1.14.0
 pydantic[email]==2.10.3
 pydantic-settings==2.7.0
 python-jose[cryptography]==3.3.0
+cryptography==43.0.3  # F31 — pinned directly; previously only available transitively via python-jose
 bcrypt==4.3.0
 python-multipart==0.0.12
 numpy==2.2.5

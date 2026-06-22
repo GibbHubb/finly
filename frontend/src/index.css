@@ -466,6 +466,36 @@ input, select, button {
 }
 .tx-filter-clear:hover { opacity: 0.85; }
 
+/* ─── Tag Filter Chips (F30) ─────────────────────────────── */
+.tx-tag-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding-top: 0.25rem;
+}
+.tx-tag-chip {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.75rem;
+  font-family: inherit;
+  background: transparent;
+  border: 1px solid rgba(99,102,241,0.35);
+  border-radius: 0.8rem;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.tx-tag-chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.tx-tag-chip--selected {
+  background: rgba(99,102,241,0.25);
+  border-color: var(--accent);
+  color: var(--accent2);
+  font-weight: 600;
+}
+
 /* ─── Subscriptions Card ─────────────────────────────────── */
 .subscriptions-card {
   background: var(--surface);

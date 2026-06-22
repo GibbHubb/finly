@@ -202,6 +202,13 @@ def import_csv(
 
     if imported > 0:
         db.commit()
+        # F32: auto-tag recurring transactions after a successful import.
+        # Wrapped so a detection failure never breaks the import result.
+        try:
+            from app.services.recurring_service import apply_recurring_tags
+            apply_recurring_tags(user_id, db)
+        except Exception:
+            pass  # log is written inside apply_recurring_tags; import result is unaffected
 
     return {"imported": imported, "skipped_duplicates": skipped, "errors": errors}
 
@@ -419,6 +426,13 @@ def commit_mapped_import(
 
     if imported > 0:
         db.commit()
+        # F32: auto-tag recurring transactions after a successful import.
+        # Wrapped so a detection failure never breaks the import result.
+        try:
+            from app.services.recurring_service import apply_recurring_tags
+            apply_recurring_tags(user_id, db)
+        except Exception:
+            pass  # apply_recurring_tags logs internally; import result is unaffected
 
     # Persist the mapping on first successful commit (or update existing)
     if imported > 0 or (skipped > 0 and not errors):

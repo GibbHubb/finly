@@ -2,6 +2,9 @@
 
 Tags are user-scoped; same `name` allowed across users. Names are
 normalised (lowercased + trimmed) to dedupe casual variants.
+
+F32 note: _resolve_tag and _normalise now delegate to app.services.tags so
+that service-layer code can import the helpers without a circular dependency.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -12,6 +15,7 @@ from app.models.tag import Tag
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.services.auth import get_current_user
+from app.services.tags import normalise_tag_name, resolve_tag
 
 
 router = APIRouter(prefix="/tags", tags=["tags"])
@@ -30,7 +34,7 @@ class TagCreate(BaseModel):
 
 
 def _normalise(name: str) -> str:
-    return (name or "").strip().lower()
+    return normalise_tag_name(name)
 
 
 @router.get("", response_model=list[TagOut])
@@ -91,17 +95,14 @@ def _load_owned_tx(tx_id: int, user_id: int, db: Session) -> Transaction:
 
 
 def _resolve_tag(user_id: int, name: str, db: Session) -> Tag:
-    """Find-or-create the tag — keeps the assign endpoint single-call."""
-    norm = _normalise(name)
-    if not norm:
-        raise HTTPException(status_code=422, detail="Tag name is required")
-    tag = db.query(Tag).filter(Tag.user_id == user_id, Tag.name == norm).first()
-    if tag:
-        return tag
-    tag = Tag(user_id=user_id, name=norm)
-    db.add(tag)
-    db.flush()
-    return tag
+    """Find-or-create the tag — keeps the assign endpoint single-call.
+
+    Delegates to app.services.tags.resolve_tag (F32: shared helper).
+    """
+    try:
+        return resolve_tag(user_id, name, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @router.post("/assign/{tx_id}", response_model=list[TagOut])

@@ -100,6 +100,20 @@ def list_recurring(
     return detect(current_user.id, db)
 
 
+@router.post("/detect-recurring")
+def detect_recurring(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """F32 — Run the recurring-transaction detection pass and apply 'recurring' tags.
+
+    Idempotent: safe to call multiple times.  Returns a summary of how many
+    transactions were tagged and how many recurring merchant groups were found.
+    """
+    from app.services.recurring_service import apply_recurring_tags
+    return apply_recurring_tags(current_user.id, db)
+
+
 @router.post("/", response_model=TransactionOut, status_code=201)
 async def add_transaction(
     data: TransactionCreate,

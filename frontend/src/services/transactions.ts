@@ -94,6 +94,8 @@ export interface BankStatus {
   status: string;
   last_sync_at: string | null;
   last_error: string | null;
+  /** F31 — true when status is "expired" and the user must re-consent. */
+  needs_reconnect?: boolean;
 }
 
 export const bankService = {

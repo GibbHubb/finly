@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     GOCARDLESS_SANDBOX_INSTITUTION: str = "SANDBOXFINANCE_SFIN0000"
     SYNC_INTERVAL_HOURS: int = 24
 
+    # F31 — Fernet symmetric encryption key for at-rest secrets.
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # Leave empty in dev; the crypto helper raises loudly if encrypt/decrypt is
+    # actually called without a key (it never silently writes plaintext).
+    FERNET_KEY: str = ""
+
     class Config:
         env_file = ".env"
 

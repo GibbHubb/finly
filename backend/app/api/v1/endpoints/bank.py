@@ -130,6 +130,8 @@ def status(
             "status": c.status,
             "last_sync_at": c.last_sync_at,
             "last_error": c.last_error,
+            # F31 — true when the connection has expired and the user must reconnect.
+            "needs_reconnect": c.status == "expired",
         }
         for c in conns
     ]
