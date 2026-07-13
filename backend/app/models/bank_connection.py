@@ -1,8 +1,10 @@
 """F27 — Stored GoCardless bank connection per finly user.
 
 One row per active requisition. The user can have multiple (different
-banks). Status flips to 'error' when GoCardless returns 401 on a sync
-(typically a lapsed 90-day consent) so the UI can prompt a reconnect.
+banks). Status is one of pending|active|error|expired — flips to
+'expired' when GoCardless returns 401/403 on a sync (typically a
+lapsed 90-day consent) so the UI can prompt a reconnect, or 'error'
+on other sync failures.
 Token encryption-at-rest is deliberately out of scope for the sandbox
 v1 — tracked as a follow-up.
 """
@@ -22,7 +24,7 @@ class BankConnection(Base):
     account_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     institution_id: Mapped[str] = mapped_column(String(64), nullable=False)
     institution_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")  # pending|active|error
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")  # pending|active|error|expired
     last_sync_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
