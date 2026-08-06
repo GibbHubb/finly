@@ -6,6 +6,7 @@ import { useTransactionStore } from "@/store/transactionStore";
 import { useTransactionSocket } from "@/hooks/useTransactionSocket";
 import type { TransactionCreate, Category, ImportResult, BudgetAlert, Transaction } from "@/types";
 import { formatCurrency, formatDate } from "@/utils/format";
+import { apiErrorMessage } from "@/utils/errors";
 import SplitTransactionModal from "@/components/SplitTransactionModal";
 import RecurringReview from "@/components/RecurringReview";
 import { bankService, downloadYearReview, tagService, transactionService, type BankStatus, type TagBrief } from "@/services/transactions";
@@ -48,8 +49,8 @@ export default function DashboardPage() {
       // Open the GoCardless hosted consent screen; user returns to /bank/callback
       window.open(r.link, "_blank", "noopener");
       setBankMsg("Consent screen opened — complete it and return here.");
-    } catch (err: any) {
-      setBankMsg(err?.response?.data?.detail || "Bank connect failed (check GOCARDLESS_* env vars)");
+    } catch (err: unknown) {
+      setBankMsg(apiErrorMessage(err, "Bank connect failed (check GOCARDLESS_* env vars)"));
     } finally {
       setBankBusy(false);
     }
@@ -67,8 +68,8 @@ export default function DashboardPage() {
       setBankMsg(`Synced ${r.connections} connection(s): +${totals.ins} new, ${totals.skip} skipped`);
       bankService.status().then(setBanks).catch(() => undefined);
       refetchTransactions();
-    } catch (err: any) {
-      setBankMsg(err?.response?.data?.detail || "Sync failed");
+    } catch (err: unknown) {
+      setBankMsg(apiErrorMessage(err, "Sync failed"));
     } finally {
       setBankBusy(false);
     }
@@ -122,11 +123,16 @@ export default function DashboardPage() {
     );
   };
 
-  // Fetch forecast + recurring on mount
+  // Fetch forecast + recurring on mount.
+  // F-lint1 — `now` was a render-scoped `new Date()`, so listing it as a dep
+  // would refire every render. Reading the date inside the effect drops it
+  // from the dep set entirely; the two store actions are stable zustand
+  // references, so this stays mount-only as intended.
   useEffect(() => {
-    fetchForecast(now.getMonth() + 1, now.getFullYear());
+    const d = new Date();
+    fetchForecast(d.getMonth() + 1, d.getFullYear());
     fetchRecurring();
-  }, []);
+  }, [fetchForecast, fetchRecurring]);
 
   // F30 — load available tags on mount
   useEffect(() => {
@@ -303,7 +309,7 @@ export default function DashboardPage() {
                 outerRadius={80}
                 paddingAngle={2}
                 cursor="pointer"
-                onClick={(d: any) => d?.name && navigate(`/category/${d.name}`)}
+                onClick={(d: { name?: string }) => d?.name && navigate(`/category/${d.name}`)}
               >
                 {expenseByCategory.map((e, i) => <Cell key={i} fill={e.fill} />)}
               </Pie>

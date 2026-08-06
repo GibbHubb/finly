@@ -11,8 +11,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { transactionService } from "@/services/transactions";
-import type { Transaction } from "@/types";
+import type { Category, Transaction } from "@/types";
 import { formatCurrency, formatDate } from "@/utils/format";
+
+// F-lint1 — the route param is an arbitrary string; validate it against the
+// real union instead of casting through `any`, so an unknown /category/<x>
+// URL cannot reach the API as a bogus filter.
+const CATEGORIES: readonly Category[] = [
+  "housing", "food", "transport", "entertainment",
+  "health", "shopping", "salary", "freelance", "other",
+];
+
+function asCategory(value: string | undefined): Category | undefined {
+  return CATEGORIES.find((c) => c === value);
+}
 
 export default function CategoryDrilldownPage() {
   const { name } = useParams<{ name: string }>();
@@ -34,7 +46,7 @@ export default function CategoryDrilldownPage() {
     setError(null);
     transactionService
       .list({
-        category: name as any,
+        category: asCategory(name),
         date_from: localFrom || undefined,
         date_to: localTo || undefined,
         limit: 500,

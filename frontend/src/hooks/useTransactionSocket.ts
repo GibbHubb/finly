@@ -57,5 +57,10 @@ export function useTransactionSocket(onBudgetAlert?: (alert: BudgetAlert) => voi
       unmounted.current = true;
       ws.current?.close();
     };
-  }, [token]);
+    // F-lint1 — `pushTransaction` is a zustand action, defined once in the
+    // store, so its reference is stable and listing it cannot cause the
+    // socket to reconnect. The callback prop is deliberately NOT a dep: it is
+    // held in `alertCb` precisely so a new inline callback each render does
+    // not tear down the connection.
+  }, [token, pushTransaction]);
 }

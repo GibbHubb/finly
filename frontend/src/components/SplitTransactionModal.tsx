@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { Transaction, Category } from "@/types";
 import { transactionService } from "@/services/transactions";
+import { apiErrorMessage } from "@/utils/errors";
 
 const CATEGORIES: Category[] = [
   "housing", "food", "transport", "entertainment",
@@ -64,8 +65,8 @@ export default function SplitTransactionModal({ tx, onClose, onSplit }: Props) {
       );
       onSplit();
       onClose();
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || err?.message || "Failed to split");
+    } catch (err: unknown) {
+      setError(apiErrorMessage(err, "Failed to split"));
     } finally {
       setBusy(false);
     }
