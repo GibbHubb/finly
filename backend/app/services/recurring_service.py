@@ -112,6 +112,18 @@ _WEEKLY_MAX_INTERVAL_DAYS = 10  # median inter-arrival ≤ this → weekly caden
 _MONTHLY_DAY_WINDOW = 3       # ±3 days on day-of-month for monthly cadence
 _TAG_NAME = "recurring"
 
+# F32-fu1 — marks a group the user has explicitly accepted, so it drops out of
+# the review queue permanently. Deliberately a second *tag* rather than a new
+# column: it reuses resolve_tag + the existing M2M, needs no migration, and the
+# user can see and undo it through the normal tag UI like any other tag.
+_CONFIRMED_TAG_NAME = "recurring-confirmed"
+
+# F32-fu1 — records that the user disagreed with the detector for this group.
+# This has to persist: apply_recurring_tags re-runs after every import, so a
+# reject that only removed the tag would silently come back next time and the
+# review UI would be pointless. Groups carrying this tag are skipped entirely.
+_REJECTED_TAG_NAME = "recurring-rejected"
+
 
 def _is_monthly(txs: list[Transaction]) -> bool:
     """True if ≥3 distinct calendar months with day-of-month within ±3 days."""
@@ -189,6 +201,11 @@ def apply_recurring_tags(user_id: int, db: Session) -> dict:
     group_count = 0
 
     for merchant, txs in groups.items():
+        # Gate 0 (F32-fu1): the user already rejected this group. Respect that
+        # — without this the next import would silently re-apply the tag and
+        # the review decision would never stick.
+        if any(t.name == _REJECTED_TAG_NAME for tx in txs for t in tx.tags):
+            continue
         # Gate 1: minimum occurrences
         if len(txs) < _MIN_OCCURRENCES:
             continue
@@ -216,3 +233,121 @@ def apply_recurring_tags(user_id: int, db: Session) -> dict:
         user_id, group_count, tagged_count,
     )
     return {"tagged_transactions": tagged_count, "recurring_groups": group_count}
+
+
+# ---------------------------------------------------------------------------
+# F32-fu1 — Review surface for auto-applied 'recurring' tags
+# ---------------------------------------------------------------------------
+#
+# F32 applies the tag with no way to disagree with it. These helpers back a
+# small review queue: list what was auto-tagged, then either confirm the group
+# (accept the heuristic) or reject it (strip the tag).
+#
+# Grouping is by the SAME normalised description key apply_recurring_tags used,
+# so a review row corresponds exactly to a decision the detector made — the
+# user accepts or rejects the detector's own unit of work, not an arbitrary
+# re-slice of it.
+
+
+def _tagged_groups(user_id: int, db: Session) -> dict[str, list[Transaction]]:
+    """Every transaction currently carrying the 'recurring' tag, grouped by
+    the normalised merchant key."""
+    from app.models.tag import Tag
+
+    tag = (
+        db.query(Tag)
+        .filter(Tag.user_id == user_id, Tag.name == _TAG_NAME)
+        .first()
+    )
+    if not tag:
+        return {}
+
+    groups: dict[str, list[Transaction]] = defaultdict(list)
+    for tx in sorted(tag.transactions, key=lambda t: t.transaction_date):
+        if tx.user_id != user_id:
+            continue  # defensive: tags are user-scoped, but never cross tenants
+        groups[_normalise(tx.description)].append(tx)
+    return groups
+
+
+def list_recurring_review(user_id: int, db: Session) -> list[dict]:
+    """Auto-tagged recurring groups awaiting a decision.
+
+    Groups where every transaction already carries 'recurring-confirmed' are
+    omitted — the user has accepted those and does not want to be asked again.
+    """
+    results: list[dict] = []
+    for merchant, txs in _tagged_groups(user_id, db).items():
+        confirmed = all(
+            any(t.name == _CONFIRMED_TAG_NAME for t in tx.tags) for tx in txs
+        )
+        if confirmed:
+            continue
+        amounts = [float(tx.amount) for tx in txs]
+        results.append({
+            "merchant": merchant,
+            "transaction_count": len(txs),
+            "median_amount": round(median(amounts), 2),
+            "total_amount": round(sum(amounts), 2),
+            "first_seen": txs[0].transaction_date,
+            "last_seen": txs[-1].transaction_date,
+            "transaction_ids": [tx.id for tx in txs],
+        })
+
+    # Biggest spend first — that's what a user wants to check hardest.
+    results.sort(key=lambda r: r["total_amount"], reverse=True)
+    return results
+
+
+def resolve_recurring_group(
+    user_id: int, merchant: str, action: str, db: Session
+) -> dict:
+    """Confirm or reject one auto-tagged group.
+
+    confirm → add 'recurring-confirmed' so the group leaves the review queue.
+    reject  → remove 'recurring', undoing the detector's decision.
+
+    Idempotent in both directions. Returns the number of transactions changed;
+    an unknown merchant yields 0 rather than an error, so a double-submit from
+    a stale page is harmless.
+    """
+    if action not in ("confirm", "reject"):
+        raise ValueError("action must be 'confirm' or 'reject'")
+
+    from app.services.tags import resolve_tag
+
+    txs = _tagged_groups(user_id, db).get(_normalise(merchant), [])
+    if not txs:
+        return {"merchant": merchant, "action": action, "transactions_updated": 0}
+
+    changed = 0
+    if action == "confirm":
+        confirmed_tag = resolve_tag(user_id, _CONFIRMED_TAG_NAME, db)
+        for tx in txs:
+            if confirmed_tag not in tx.tags:
+                tx.tags.append(confirmed_tag)
+                changed += 1
+    else:
+        rejected_tag = resolve_tag(user_id, _REJECTED_TAG_NAME, db)
+        for tx in txs:
+            recurring = next((t for t in tx.tags if t.name == _TAG_NAME), None)
+            if recurring is not None:
+                tx.tags.remove(recurring)
+                changed += 1
+            # Drop a stale confirmation so the two markers can't disagree.
+            stale = next((t for t in tx.tags if t.name == _CONFIRMED_TAG_NAME), None)
+            if stale is not None:
+                tx.tags.remove(stale)
+            # Persist the rejection so the next import does not re-tag it.
+            if rejected_tag not in tx.tags:
+                tx.tags.append(rejected_tag)
+                changed = changed or 1
+
+    if changed:
+        db.commit()
+
+    log.info(
+        "resolve_recurring_group: user_id=%s merchant=%r action=%s updated=%s",
+        user_id, merchant, action, changed,
+    )
+    return {"merchant": merchant, "action": action, "transactions_updated": changed}

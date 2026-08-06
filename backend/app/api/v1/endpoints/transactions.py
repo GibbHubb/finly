@@ -14,6 +14,9 @@ from app.schemas.transaction import (
     MonthlySummaryOut,
     MonthlyTrendEntry,
     RecurringItemOut,
+    RecurringReviewAction,
+    RecurringReviewGroup,
+    RecurringReviewResult,
     SplitRequest,
     TransactionCreate,
     TransactionOut,
@@ -112,6 +115,40 @@ def detect_recurring(
     """
     from app.services.recurring_service import apply_recurring_tags
     return apply_recurring_tags(current_user.id, db)
+
+
+@router.get("/recurring-review", response_model=list[RecurringReviewGroup])
+def list_recurring_review_groups(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """F32-fu1 — auto-tagged 'recurring' groups still awaiting a decision.
+
+    Groups the user has confirmed drop out; groups they rejected no longer
+    carry the tag at all, so they never reappear here.
+    """
+    from app.services.recurring_service import list_recurring_review
+    return list_recurring_review(current_user.id, db)
+
+
+@router.post("/recurring-review", response_model=RecurringReviewResult)
+def resolve_recurring_review_group(
+    data: RecurringReviewAction,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """F32-fu1 — confirm or reject one auto-tagged recurring group.
+
+    Idempotent, and an unknown merchant returns 0 updates rather than 404, so
+    a double-submit from a stale page is harmless.
+    """
+    from app.services.recurring_service import resolve_recurring_group
+    try:
+        return resolve_recurring_group(
+            current_user.id, data.merchant, data.action, db
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.post("/", response_model=TransactionOut, status_code=201)

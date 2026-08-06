@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
@@ -119,6 +120,28 @@ class RecurringItemOut(BaseModel):
     typical_day: int
     months_detected: int
     last_seen: date
+
+
+class RecurringReviewGroup(BaseModel):
+    """F32-fu1 — one auto-tagged group awaiting the user's confirm/reject."""
+    merchant: str
+    transaction_count: int
+    median_amount: float
+    total_amount: float
+    first_seen: date
+    last_seen: date
+    transaction_ids: list[int]
+
+
+class RecurringReviewAction(BaseModel):
+    merchant: str
+    action: Literal["confirm", "reject"]
+
+
+class RecurringReviewResult(BaseModel):
+    merchant: str
+    action: str
+    transactions_updated: int
 
 
 class MonthlyTrendEntry(BaseModel):

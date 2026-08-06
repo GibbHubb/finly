@@ -106,6 +106,25 @@ export interface RecurringItem {
   last_seen: string;
 }
 
+// F32-fu1 — an auto-tagged 'recurring' group awaiting the user's decision.
+export interface RecurringReviewGroup {
+  merchant: string;
+  transaction_count: number;
+  median_amount: number;
+  total_amount: number;
+  first_seen: string;
+  last_seen: string;
+  transaction_ids: number[];
+}
+
+export type RecurringReviewAction = "confirm" | "reject";
+
+export interface RecurringReviewResult {
+  merchant: string;
+  action: string;
+  transactions_updated: number;
+}
+
 export interface MonthlyTrendEntry {
   month: string;                          // YYYY-MM
   categories: Record<string, string>;     // category -> amount as string (Decimal)

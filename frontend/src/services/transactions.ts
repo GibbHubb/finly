@@ -1,5 +1,5 @@
 import api from "./api";
-import type { ForecastResult, ImportMappingPayload, ImportPreview, ImportResult, MonthlySummary, MonthlyTrendEntry, RecurringItem, Transaction, TransactionCreate, TransactionFilters } from "@/types";
+import type { ForecastResult, ImportMappingPayload, ImportPreview, ImportResult, MonthlySummary, MonthlyTrendEntry, RecurringItem, RecurringReviewAction, RecurringReviewGroup, RecurringReviewResult, Transaction, TransactionCreate, TransactionFilters } from "@/types";
 
 export const transactionService = {
   async list(filters: TransactionFilters = {}): Promise<Transaction[]> {
@@ -55,6 +55,25 @@ export const transactionService = {
 
   async recurring(): Promise<RecurringItem[]> {
     const { data } = await api.get<RecurringItem[]>("/transactions/recurring");
+    return data;
+  },
+
+  // F32-fu1 — review surface for the auto-applied 'recurring' tag.
+  async recurringReview(): Promise<RecurringReviewGroup[]> {
+    const { data } = await api.get<RecurringReviewGroup[]>(
+      "/transactions/recurring-review",
+    );
+    return data;
+  },
+
+  async resolveRecurringReview(
+    merchant: string,
+    action: RecurringReviewAction,
+  ): Promise<RecurringReviewResult> {
+    const { data } = await api.post<RecurringReviewResult>(
+      "/transactions/recurring-review",
+      { merchant, action },
+    );
     return data;
   },
 

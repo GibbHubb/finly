@@ -7,6 +7,7 @@ import { useTransactionSocket } from "@/hooks/useTransactionSocket";
 import type { TransactionCreate, Category, ImportResult, BudgetAlert, Transaction } from "@/types";
 import { formatCurrency, formatDate } from "@/utils/format";
 import SplitTransactionModal from "@/components/SplitTransactionModal";
+import RecurringReview from "@/components/RecurringReview";
 import { bankService, downloadYearReview, tagService, transactionService, type BankStatus, type TagBrief } from "@/services/transactions";
 import TransactionFilter from "@/components/ui/TransactionFilter";
 
@@ -335,6 +336,10 @@ export default function DashboardPage() {
           </>
         )}
       </div>
+
+      {/* F32-fu1 — confirm/reject the auto-applied 'recurring' tag.
+          Self-hiding when there is nothing pending. */}
+      <RecurringReview />
 
       <div className="main-grid">
         <form className="add-form" onSubmit={handleAdd}>
