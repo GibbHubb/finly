@@ -8,6 +8,7 @@ interface AuthState {
   isLoading: boolean;
   baseCurrency: string;
   login: (email: string, password: string) => Promise<void>;
+  demoLogin: () => Promise<void>;
   logout: () => void;
   fetchMe: () => Promise<void>;
   setBaseCurrency: (currency: string) => Promise<void>;
@@ -25,6 +26,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.setItem("token", token);
     const user = await authService.me();
     set({ token, user, isLoading: false, baseCurrency: user.base_currency ?? "EUR" });
+  },
+
+  demoLogin: async () => {
+    set({ isLoading: true });
+    try {
+      const token = await authService.demoLogin();
+      localStorage.setItem("token", token);
+      const user = await authService.me();
+      set({ token, user, isLoading: false, baseCurrency: user.base_currency ?? "EUR" });
+    } catch (err) {
+      set({ isLoading: false });
+      throw err;
+    }
   },
 
   logout: () => {

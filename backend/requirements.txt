@@ -17,3 +17,4 @@ factory-boy==3.3.1
 pytest-factoryboy==2.7.0
 apscheduler==3.10.4  # F27 — nightly bank-sync scheduler (in-process)
 reportlab==4.2.5     # F28 — year-end PDF report (pure Python; no native deps)
+psycopg2-binary==2.9.10  # F33 — driver for Render managed Postgres

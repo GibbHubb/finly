@@ -1,0 +1,66 @@
+# F33 — Render Blueprint: FastAPI backend + managed Postgres + static frontend.
+#
+# One `git push` provisions all three. Import this repo as a Blueprint in the
+# Render dashboard; everything below is declarative except the two values
+# marked TODO, which cannot be known until the services have URLs.
+#
+# Schema: app/main.py calls Base.metadata.create_all() at import, so a fresh
+# Postgres self-provisions on first boot. There is an alembic/ directory too,
+# but running `alembic upgrade head` here would be redundant and would fail on
+# an empty DB that create_all has already populated. If migrations later become
+# the source of truth, add `preDeployCommand: alembic upgrade head` to the web
+# service and drop the create_all call — not both.
+
+services:
+  # ── FastAPI backend ──────────────────────────────────────────────────────
+  - type: web
+    name: finly-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: frankfurt
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: finly-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true          # never commit this; Render mints it
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "60"
+      - key: DEMO_MODE
+        value: "1"
+      - key: DEMO_RESET_MINUTES
+        value: "60"
+      # TODO after first deploy: set to the static site's URL, e.g.
+      # https://finly-web.onrender.com  (comma-separated, no trailing slash)
+      - key: BACKEND_CORS_ORIGINS
+        sync: false
+
+  # ── Vite static frontend ─────────────────────────────────────────────────
+  - type: web
+    name: finly-web
+    runtime: static
+    plan: free
+    rootDir: ./frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      # TODO after first deploy: set to the API's URL, e.g.
+      # https://finly-api.onrender.com  (no trailing slash, no /api/v1 suffix —
+      # api.ts appends that itself)
+      - key: VITE_API_URL
+        sync: false
+    routes:
+      # SPA fallback: React Router owns the paths, so every unmatched request
+      # must return index.html rather than a 404.
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+databases:
+  - name: finly-db
+    plan: free                       # ⚠️ Render's free Postgres expires after 90 days
+    region: frankfurt

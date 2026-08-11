@@ -6,7 +6,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const { login, isLoading } = useAuthStore();
+  const { login, demoLogin, isLoading } = useAuthStore();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -17,6 +17,19 @@ export default function LoginPage() {
       navigate("/dashboard");
     } catch {
       setError("Invalid email or password");
+    }
+  };
+
+  // F33 — one click into a pre-seeded, auto-resetting demo account. The
+  // endpoint 404s when DEMO_MODE is off, so on a non-demo deployment this
+  // button reports that rather than hanging.
+  const handleDemo = async () => {
+    setError("");
+    try {
+      await demoLogin();
+      navigate("/dashboard");
+    } catch {
+      setError("The demo isn't available on this deployment.");
     }
   };
 
@@ -31,6 +44,22 @@ export default function LoginPage() {
           <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
           <button type="submit" disabled={isLoading}>{isLoading ? "Signing in…" : "Sign in"}</button>
         </form>
+
+        <div className="auth-divider"><span>or</span></div>
+
+        <button
+          type="button"
+          className="demo-button"
+          onClick={handleDemo}
+          disabled={isLoading}
+        >
+          Try the demo
+        </button>
+        <p className="demo-hint">
+          No sign-up. Explore a pre-filled account with four months of data —
+          it resets itself, so feel free to change anything.
+        </p>
+
         <p>No account? <Link to="/register">Register</Link></p>
       </div>
     </div>

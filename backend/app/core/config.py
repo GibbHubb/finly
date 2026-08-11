@@ -26,6 +26,27 @@ class Settings(BaseSettings):
     # actually called without a key (it never silently writes plaintext).
     FERNET_KEY: str = ""
 
+    # F33 — public demo deploy.
+    # CORS origins are comma-separated so a single env var covers the deployed
+    # static site plus local dev. Previously hardcoded to the Vite dev server,
+    # which made the app unusable from any other origin.
+    BACKEND_CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+
+    # DEMO_MODE gates the whole demo surface: the /auth/demo-login endpoint,
+    # the startup seed, and the periodic reset job. Off by default so a real
+    # deployment can never accidentally expose a passwordless login or run a
+    # job that deletes rows.
+    DEMO_MODE: bool = False
+    DEMO_USER_EMAIL: str = "demo@finly.app"
+    DEMO_USER_PASSWORD: str = "demo-only-not-a-secret"
+    DEMO_USER_NAME: str = "Demo User"
+    # How often the demo account is wiped back to the seeded baseline.
+    DEMO_RESET_MINUTES: int = 60
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.BACKEND_CORS_ORIGINS.split(",") if o.strip()]
+
     class Config:
         env_file = ".env"
 

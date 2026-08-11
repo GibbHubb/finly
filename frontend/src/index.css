@@ -104,6 +104,53 @@ input, select, button {
   border-color: var(--accent);
 }
 
+/* F33 — "Try the demo" affordance on the login page. Deliberately styled as a
+   secondary action: it must read as distinct from the real Sign in button,
+   not compete with it. */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.25rem 0 1rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.auth-card .demo-button {
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent2);
+  border-radius: 8px;
+  padding: 0.65rem 0.9rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.auth-card .demo-button:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+.auth-card .demo-button:disabled { opacity: 0.6; cursor: default; }
+
+.auth-card .demo-hint {
+  margin-top: 0.6rem;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
 .auth-card button[type="submit"] {
   margin-top: 0.5rem;
   background: var(--accent);

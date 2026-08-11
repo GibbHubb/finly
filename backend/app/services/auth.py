@@ -50,6 +50,23 @@ def login_user(email: str, password: str, db: Session) -> Token:
     return Token(access_token=token)
 
 
+def demo_login(db: Session) -> Token:
+    """F33 — mint a token for the shared demo account, no credentials needed.
+
+    The seed is ensured here rather than relying solely on the startup hook, so
+    a cold free-tier instance whose database was re-provisioned still serves a
+    working demo on the first click instead of an empty dashboard.
+
+    The caller (the endpoint) is responsible for the DEMO_MODE gate — this
+    helper is not safe to expose unguarded, since it hands out a valid session
+    to anyone who asks.
+    """
+    from app.services.demo_seed import seed_demo
+
+    user = seed_demo(db)
+    return Token(access_token=create_access_token(user.id))
+
+
 def update_user(user: User, data: UserUpdate, db: Session) -> User:
     from app.services.rates_service import SUPPORTED_CURRENCIES
     from app.services.transactions import recompute_all_base_amounts
