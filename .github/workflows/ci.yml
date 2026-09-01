@@ -46,9 +46,9 @@ jobs:
           # $GITHUB_STEP_SUMMARY is NOT exposed on the check-run, so it is
           # invisible to anyone without a token. `::error::` becomes an
           # annotation, which the API serves unauthenticated.
-          tail -n 25 pytest-output.txt 2>/dev/null | while IFS= read -r line; do
-            echo "::error::$line"
-          done
+          # ONE annotation, not many: GitHub keeps only ~10 per step, so a
+          # 25-line tail loses exactly the summary line that matters.
+          echo "::error::TAIL $(tail -n 20 pytest-output.txt 2>/dev/null | paste -sd@ -)"
       - name: Upload backend coverage
         uses: actions/upload-artifact@v4
         with:
