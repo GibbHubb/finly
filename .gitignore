@@ -28,3 +28,6 @@ Thumbs.db
 # every CI checkout started with one machine's stale run in place.
 backend/.coverage
 backend/coverage.xml
+
+# Playwright run output — F37
+frontend/test-results/
