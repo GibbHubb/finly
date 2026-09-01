@@ -33,7 +33,7 @@ App runs at http://localhost:3000, API at http://localhost:8000.
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r ../requirements.txt   # F34 — the list lives at the repo root
 alembic upgrade head
 uvicorn app.main:app --reload
 ```

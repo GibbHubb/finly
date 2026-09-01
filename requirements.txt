@@ -1,3 +1,5 @@
+# F34 — ONE list, at the repo root: Vercel's Python builder reads it there and
+# cannot parse an `-r other/file.txt` include.
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
 sqlalchemy==2.0.36
@@ -15,6 +17,8 @@ pytest-asyncio==0.24.0
 pytest-cov==6.0.0
 factory-boy==3.3.1
 pytest-factoryboy==2.7.0
-apscheduler==3.10.4  # F27 — nightly bank-sync scheduler (in-process)
+# F34 — apscheduler removed. Both in-process schedulers are Vercel Cron
+# endpoints now; a background thread in a function that is frozen between
+# requests never fires, and never says so.
 reportlab==4.2.5     # F28 — year-end PDF report (pure Python; no native deps)
 psycopg2-binary==2.9.10  # F33 — driver for Render managed Postgres

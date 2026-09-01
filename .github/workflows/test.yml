@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd backend
-          pip install -r requirements.txt
+          pip install -r ../requirements.txt   # F34 - list lives at the repo root now
 
       - name: Run tests
         env:

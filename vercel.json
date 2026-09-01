@@ -1,0 +1,60 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "builds": [
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    },
+    {
+      "src": "backend/index.py",
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": "**"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/health",
+      "dest": "/backend/index.py"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "/backend/index.py"
+    },
+    {
+      "src": "/docs",
+      "dest": "/backend/index.py"
+    },
+    {
+      "src": "/openapi.json",
+      "dest": "/backend/index.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/frontend/$1",
+      "continue": true
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/frontend/index.html"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/v1/tasks/demo-reset",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/v1/tasks/bank-sync",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}

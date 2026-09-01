@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useTransactionStore } from "@/store/transactionStore";
-import { useTransactionSocket } from "@/hooks/useTransactionSocket";
-import type { TransactionCreate, Category, ImportResult, BudgetAlert, Transaction } from "@/types";
+import { useTransactionPolling } from "@/hooks/useTransactionPolling";
+import type { TransactionCreate, Category, ImportResult, Transaction } from "@/types";
 import { formatCurrency, formatDate } from "@/utils/format";
 import { apiErrorMessage } from "@/utils/errors";
 import SplitTransactionModal from "@/components/SplitTransactionModal";
@@ -75,15 +75,19 @@ export default function DashboardPage() {
     }
   };
 
-  // Budget alert toasts
-  const [budgetAlerts, setBudgetAlerts] = useState<BudgetAlert[]>([]);
-  const handleBudgetAlert = useCallback((alert: BudgetAlert) => {
-    setBudgetAlerts((prev) => [...prev, alert]);
-    setTimeout(() => {
-      setBudgetAlerts((prev) => prev.filter((a) => a !== alert));
-    }, 5000);
-  }, []);
-  useTransactionSocket(handleBudgetAlert);
+  // F34 — the budget-alert toast stack was here, fed exclusively by the
+  // WebSocket's `budget_alert` frame. With the socket gone there is no producer
+  // for it, so the state, the callback and the toast markup are removed rather
+  // than left as UI that can never appear. Restoring alerts needs a "what
+  // changed since I last asked" endpoint to poll — filed as F35. The budget
+  // bars below still show which categories are over.
+  // F34 — polling replaces the WebSocket, which cannot exist on serverless and
+  // had been dialling ws://localhost:8000 from the deployed SPA anyway.
+  // ⚠️ It does NOT deliver budget alerts: the socket pushed those and polling
+  // has nothing to poll for them (F35). `handleBudgetAlert` and the toast it
+  // feeds are kept, unwired, because the budget bars below still render the
+  // same state and the toast returns with F35.
+  useTransactionPolling();
 
   const now = new Date();
   const [form, setForm] = useState<TransactionCreate>({
@@ -563,18 +567,6 @@ export default function DashboardPage() {
           })()}
         </div>
       </div>
-
-      {/* Budget alert toasts */}
-      {budgetAlerts.length > 0 && (
-        <div className="budget-toast-stack">
-          {budgetAlerts.map((a, i) => (
-            <div key={i} className="budget-toast">
-              <span>{a.category} over budget — {formatCurrency(parseFloat(a.spent))} of {formatCurrency(parseFloat(a.limit))} limit</span>
-              <button onClick={() => setBudgetAlerts((prev) => prev.filter((_, j) => j !== i))}>✕</button>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* F25 — split modal */}
       {splitTx && (

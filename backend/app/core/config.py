@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     # How often the demo account is wiped back to the seeded baseline.
     DEMO_RESET_MINUTES: int = 60
 
+    # F34 — the shared secret Vercel Cron sends. The scheduled tasks refuse
+    # without it rather than running unauthenticated: `demo-reset` DELETES rows,
+    # and a forgotten dashboard field must not be the difference between
+    # "scheduled" and "anyone can wipe the demo".
+    CRON_SECRET: str = ""
+
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.BACKEND_CORS_ORIGINS.split(",") if o.strip()]
