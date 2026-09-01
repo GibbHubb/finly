@@ -36,14 +36,19 @@ jobs:
       # tick is all anyone outside the repo can see, and "CI is failing" becomes
       # a fact nobody can act on. The step summary IS exposed on the check-run,
       # so the tail of a failed run lands somewhere legible.
-      - name: Report the failure in the job summary
+      - name: Report the failure as annotations
         if: failure()
         run: |
           echo '### Failed step output (tail)' >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          tail -n 60 pytest-output.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo '(no pytest-output.txt captured)' >> "$GITHUB_STEP_SUMMARY"
+          tail -n 60 pytest-output.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-        working-directory: backend
+          # $GITHUB_STEP_SUMMARY is NOT exposed on the check-run, so it is
+          # invisible to anyone without a token. `::error::` becomes an
+          # annotation, which the API serves unauthenticated.
+          tail -n 25 pytest-output.txt 2>/dev/null | while IFS= read -r line; do
+            echo "::error::$line"
+          done
       - name: Upload backend coverage
         uses: actions/upload-artifact@v4
         with:

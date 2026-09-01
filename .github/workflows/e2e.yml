@@ -44,14 +44,19 @@ jobs:
         run: set -o pipefail && npm run e2e 2>&1 | tee e2e-output.txt
 
       # F34 — see the note in ci.yml.
-      - name: Report the failure in the job summary
+      - name: Report the failure as annotations
         if: failure()
         run: |
-          echo '### Playwright output (tail)' >> "$GITHUB_STEP_SUMMARY"
+          echo '### Failed step output (tail)' >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          tail -n 60 e2e-output.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo '(nothing captured)' >> "$GITHUB_STEP_SUMMARY"
+          tail -n 60 e2e-output.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-
+          # $GITHUB_STEP_SUMMARY is NOT exposed on the check-run, so it is
+          # invisible to anyone without a token. `::error::` becomes an
+          # annotation, which the API serves unauthenticated.
+          tail -n 25 e2e-output.txt 2>/dev/null | while IFS= read -r line; do
+            echo "::error::$line"
+          done
       - name: Upload traces on failure
         if: failure()
         uses: actions/upload-artifact@v4

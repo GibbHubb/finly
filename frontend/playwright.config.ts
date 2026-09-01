@@ -26,8 +26,16 @@ export default defineConfig({
     ? undefined
     : [
         {
+          // F34 — `alembic upgrade head` first. The schema used to appear as a
+          // side effect of `Base.metadata.create_all()` running at import; that
+          // is gone (migrations are the source of truth now), so without this
+          // the e2e database has no tables and every spec dies on
+          // `/test/reset failed (500)` — which reads like an E2E_MODE problem
+          // and is not one.
           command:
             "cd ../backend && E2E_MODE=1 DATABASE_URL=sqlite:///./e2e.db " +
+            "python -m alembic upgrade head && " +
+            "E2E_MODE=1 DATABASE_URL=sqlite:///./e2e.db " +
             "python -m uvicorn app.main:app --host 127.0.0.1 --port " + BACKEND_PORT,
           url: `http://127.0.0.1:${BACKEND_PORT}/health`,
           reuseExistingServer: !process.env.CI,

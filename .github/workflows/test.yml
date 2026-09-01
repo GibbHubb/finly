@@ -35,10 +35,16 @@ jobs:
 
       # F34 — see the note in ci.yml: the log API is 403 to an unauthenticated
       # caller, so a failure has to say what it was somewhere readable.
-      - name: Report the failure in the job summary
+      - name: Report the failure as annotations
         if: failure()
         run: |
           echo '### Failed step output (tail)' >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          tail -n 60 backend/pytest-output.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo '(nothing captured)' >> "$GITHUB_STEP_SUMMARY"
+          tail -n 60 backend/pytest-output.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+          # $GITHUB_STEP_SUMMARY is NOT exposed on the check-run, so it is
+          # invisible to anyone without a token. `::error::` becomes an
+          # annotation, which the API serves unauthenticated.
+          tail -n 25 backend/pytest-output.txt 2>/dev/null | while IFS= read -r line; do
+            echo "::error::$line"
+          done
