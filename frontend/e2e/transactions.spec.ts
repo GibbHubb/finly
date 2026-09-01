@@ -20,7 +20,11 @@ test.describe("transactions", () => {
 
   test("expense subtracts from balance", async ({ loggedInPage: page }) => {
     // Add an income first
-    await page.locator('select').first().selectOption("income");
+    await page
+      .locator("select")
+      .filter({ has: page.locator('option[value="income"]') })
+      .first()
+      .selectOption("income");   // F34 — by content, not position
     await page.locator('input[placeholder*="Amount"]').fill("100.00");
     await page.locator('input[placeholder*="Description"]').fill("E2E income");
     await page.locator('input[type="date"]').first().fill(new Date().toISOString().slice(0, 10));
@@ -29,7 +33,11 @@ test.describe("transactions", () => {
     await expect(page.locator(".stat-card.income")).toContainText(/100/);
 
     // Add an expense
-    await page.locator('select').first().selectOption("expense");
+    await page
+      .locator("select")
+      .filter({ has: page.locator('option[value="expense"]') })
+      .first()
+      .selectOption("expense");   // F34 — by content, not position
     await page.locator('input[placeholder*="Amount"]').fill("30.00");
     await page.locator('input[placeholder*="Description"]').fill("E2E coffee");
     await page.locator('input[type="date"]').first().fill(new Date().toISOString().slice(0, 10));

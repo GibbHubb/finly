@@ -8,7 +8,15 @@ test.describe("budgets", () => {
 
     // Find the food category dropdown / amount input. The exact form structure
     // varies — this test asserts the broad shape (a category, an amount, a save action).
-    const categoryDropdown = page.locator("select").first();
+    // F34 — pick the select that HAS a food option, not "the first one".
+    // The page grew month and year dropdowns above the category one, so
+    // `.first()` had been selecting into the month picker and timing out. A
+    // positional locator is a guess about layout; this is a statement about
+    // what the control is.
+    const categoryDropdown = page
+      .locator("select")
+      .filter({ has: page.locator('option[value="food"]') })
+      .first();
     await categoryDropdown.selectOption("food");
 
     // Enter a tight limit
