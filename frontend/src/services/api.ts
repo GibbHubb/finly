@@ -25,12 +25,22 @@ api.interceptors.request.use((config) => {
 // allowed to fail and be reported where it happened.
 const AUTH_ATTEMPT = ["/auth/login", "/auth/register", "/auth/demo-login"];
 
+/**
+ * Should a 401 bounce the browser to /login?
+ *
+ * Exported so the rule can be tested without standing up axios and a fake
+ * `window.location` — the decision is the part worth pinning, and it is the
+ * part that was wrong.
+ */
+export function shouldRedirectOn401(status: number | undefined, url: string): boolean {
+  if (status !== 401) return false;
+  return !AUTH_ATTEMPT.some((p) => url.includes(p));
+}
+
 api.interceptors.response.use(
   (r) => r,
   (err) => {
-    const url: string = err.config?.url ?? "";
-    const isAuthAttempt = AUTH_ATTEMPT.some((p) => url.includes(p));
-    if (err.response?.status === 401 && !isAuthAttempt) {
+    if (shouldRedirectOn401(err.response?.status, err.config?.url ?? "")) {
       localStorage.removeItem("token");
       window.location.href = "/login";
     }
