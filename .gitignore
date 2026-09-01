@@ -23,3 +23,8 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# F34 — coverage artefacts are build output, not source. They were tracked, so
+# every CI checkout started with one machine's stale run in place.
+backend/.coverage
+backend/coverage.xml

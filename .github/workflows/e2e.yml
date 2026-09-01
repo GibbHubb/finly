@@ -41,7 +41,16 @@ jobs:
           E2E_MODE: "1"
           DATABASE_URL: "sqlite:///./e2e.db"
           CI: "true"
-        run: npm run e2e
+        run: set -o pipefail && npm run e2e 2>&1 | tee e2e-output.txt
+
+      # F34 — see the note in ci.yml.
+      - name: Report the failure in the job summary
+        if: failure()
+        run: |
+          echo '### Playwright output (tail)' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          tail -n 60 e2e-output.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo '(nothing captured)' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload traces on failure
         if: failure()

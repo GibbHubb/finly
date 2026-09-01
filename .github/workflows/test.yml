@@ -31,4 +31,14 @@ jobs:
           ACCESS_TOKEN_EXPIRE_MINUTES: 30
         run: |
           cd backend
-          pytest --tb=short
+          set -o pipefail && pytest --tb=short 2>&1 | tee pytest-output.txt
+
+      # F34 — see the note in ci.yml: the log API is 403 to an unauthenticated
+      # caller, so a failure has to say what it was somewhere readable.
+      - name: Report the failure in the job summary
+        if: failure()
+        run: |
+          echo '### Failed step output (tail)' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          tail -n 60 backend/pytest-output.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo '(nothing captured)' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

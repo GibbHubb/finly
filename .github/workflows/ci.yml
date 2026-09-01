@@ -25,9 +25,25 @@ jobs:
         env:
           DATABASE_URL: sqlite:///./test.db
           PYTHONPATH: .
-      - run: pytest tests/ -v --tb=short
+      - name: Run pytest
         env:
           PYTHONPATH: .
+        run: set -o pipefail && pytest tests/ -v --tb=short 2>&1 | tee pytest-output.txt
+
+      # F34 — put the failure where it can be READ without a token.
+      #
+      # GitHub's job-log API answers 403 to an unauthenticated caller, so a red
+      # tick is all anyone outside the repo can see, and "CI is failing" becomes
+      # a fact nobody can act on. The step summary IS exposed on the check-run,
+      # so the tail of a failed run lands somewhere legible.
+      - name: Report the failure in the job summary
+        if: failure()
+        run: |
+          echo '### Failed step output (tail)' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          tail -n 60 pytest-output.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo '(no pytest-output.txt captured)' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+        working-directory: backend
       - name: Upload backend coverage
         uses: actions/upload-artifact@v4
         with:
