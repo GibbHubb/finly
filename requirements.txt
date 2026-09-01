@@ -23,13 +23,17 @@ pytest-factoryboy==2.7.0
 reportlab==4.2.5     # F28 — year-end PDF report (pure Python; no native deps)
 psycopg2-binary==2.9.10  # F33 — driver for Render managed Postgres
 
-# F34 — three dependencies that were USED but never DECLARED. All three were
-# installed here by accident (pulled in transitively, or left over from an old
-# venv), so every local run passed while a clean CI checkout could not even
-# COLLECT the test suite: `ERROR tests/test_trends.py`, pytest exit code 2.
+# F34 — ONE dependency that was used but never declared.
 #
-# `pydantic-settings` is the alarming one — app/core/config.py imports it at
-# startup, so the deployed app was relying on it arriving by luck.
+# `tests/test_trends.py` imports `dateutil`, which was installed here by
+# accident (something else pulls it in), so every local run passed while a
+# clean CI checkout could not even COLLECT the suite:
+# `ERROR tests/test_trends.py`, pytest exit code 2 — an interruption, which
+# says nothing about which import was missing.
+#
+# ⚠️ pydantic-settings and factory-boy are NOT added here: they were already
+# declared above, and my first pass added second, conflicting pins for both
+# because the scan compared the IMPORT name (`pydantic_settings`) against the
+# DISTRIBUTION name (`pydantic-settings`) without normalising. That broke
+# `pip install` outright — a worse failure than the one it was fixing.
 python-dateutil==2.9.0.post0
-pydantic-settings==2.14.2
-factory-boy==3.3.1
