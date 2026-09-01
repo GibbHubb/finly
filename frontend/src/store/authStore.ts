@@ -21,11 +21,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   baseCurrency: "EUR",
 
   login: async (email, password) => {
+    // F37 — isLoading is reset on FAILURE too. It was only cleared on the happy
+    // path, so a rejected sign-in left the store loading forever and the Sign
+    // in button disabled, reading "Signing in…" — you could not even retry.
     set({ isLoading: true });
-    const token = await authService.login(email, password);
-    localStorage.setItem("token", token);
-    const user = await authService.me();
-    set({ token, user, isLoading: false, baseCurrency: user.base_currency ?? "EUR" });
+    try {
+      const token = await authService.login(email, password);
+      localStorage.setItem("token", token);
+      const user = await authService.me();
+      set({ token, user, isLoading: false, baseCurrency: user.base_currency ?? "EUR" });
+    } catch (err) {
+      set({ isLoading: false });
+      throw err;
+    }
   },
 
   demoLogin: async () => {

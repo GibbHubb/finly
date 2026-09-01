@@ -5,27 +5,26 @@ test.describe("savings goals", () => {
     await page.goto("/savings");
     await expect(page.getByRole("heading", { name: /savings goals/i })).toBeVisible();
 
-    // Fill the new-goal form. Selectors are tolerant — the SavingsPage form has
-    // name, target_amount, deadline.
-    const nameInput = page.locator('input[type="text"]').first();
-    await nameInput.fill("Holiday fund");
+    // F37 — every locator here names the field by its placeholder rather than
+    // its position. The previous version used .first() / .last() on
+    // `input[type=number]`, which worked only while the page had no goals: once
+    // a goal row exists it renders ABOVE the new-goal form, so `.last()` was
+    // the form's Target field. The contribution went into "target amount", the
+    // row's + Add saw an empty box and added nothing, and the goal sat at
+    // €0.00 — which reads as a broken feature and was a broken test.
+    await page.locator('input[placeholder="Holiday fund"]').fill("Holiday fund");
+    await page.locator('input[placeholder="1500.00"]').fill("500");
+    await page.getByRole("button", { name: /create goal/i }).click();
 
-    const targetInput = page.locator('input[type="number"]').first();
-    await targetInput.fill("500");
+    // The goal row renders with its target.
+    await expect(page.locator("body")).toContainText("Holiday fund");
+    await expect(page.locator("body")).toContainText(/500/);
 
-    await page.getByRole("button", { name: /create|add|save/i }).first().click();
+    // Contribute, using the row's own Amount box.
+    await page.locator('input[placeholder="Amount"]').first().fill("125");
+    await page.getByRole("button", { name: /\+ Add/ }).first().click();
 
-    // Goal row renders
-    const goal = page.locator("body", { hasText: "Holiday fund" });
-    await expect(goal).toBeVisible();
-
-    // Make a contribution. Find the row's "Add" / "+" button or amount input.
-    // Strategy: the row should have at least one number input + an Add button.
-    const contributionInput = page.locator('input[type="number"]').last();
-    await contributionInput.fill("125");
-    await page.getByRole("button", { name: /add|deposit|contribute|\+/i }).first().click();
-
-    // Progress should reflect 125/500 = 25%
+    // 125 of 500 = 25%.
     await expect(page.locator("body")).toContainText(/25\s*%|125/);
   });
 });
