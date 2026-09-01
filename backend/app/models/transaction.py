@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -35,6 +35,32 @@ class Transaction(Base):
     category: Mapped[Category] = mapped_column(String(50), nullable=False)
     description: Mapped[str] = mapped_column(String(500), default="")
     transaction_date: Mapped[date] = mapped_column(Date, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="EUR", server_default="EUR")
+    base_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    import_hash: Mapped[str | None] = mapped_column(Text, nullable=True, unique=True, index=True)
+    categorised_by_rule_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categorisation_rules.id"), nullable=True,
+    )
+    # F25 — split transactions: a transaction with `parent_transaction_id`
+    # set is a child line of its parent. The parent row stays as the
+    # immutable bank-truth record; children carry the category breakdown.
+    # Aggregations (monthly summary, category totals, list) must exclude
+    # any transaction that has children (see _excluding_split_parents()
+    # in services) to avoid double-counting parent + children.
+    parent_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"), nullable=True, index=True,
+    )
 
     owner: Mapped["User"] = relationship(back_populates="transactions")
+    parent: Mapped["Transaction | None"] = relationship(
+        "Transaction", remote_side="Transaction.id", back_populates="children",
+    )
+    children: Mapped[list["Transaction"]] = relationship(
+        "Transaction", back_populates="parent",
+        cascade="all, delete-orphan", single_parent=True,
+    )
+    # F29 — free-form tags (M2M, user-scoped).
+    tags = relationship(
+        "Tag", secondary="transaction_tags", back_populates="transactions",
+    )

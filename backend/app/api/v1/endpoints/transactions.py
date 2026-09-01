@@ -1,39 +1,195 @@
-from fastapi import APIRouter, Depends, Query
+import json
+from datetime import date
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models.transaction import Category, TransactionType
 from app.models.user import User
-from app.schemas.transaction import TransactionCreate, TransactionOut, TransactionUpdate
+from app.schemas.transaction import (
+    ImportMappingPayload,
+    ImportPreviewOut,
+    ImportResultOut,
+    MonthlySummaryOut,
+    MonthlyTrendEntry,
+    RecurringItemOut,
+    RecurringReviewAction,
+    RecurringReviewGroup,
+    RecurringReviewResult,
+    SplitRequest,
+    TransactionCreate,
+    TransactionOut,
+    TransactionUpdate,
+)
 from app.services.auth import get_current_user
+from app.services.import_service import (
+    commit_mapped_import,
+    get_saved_mapping,
+    import_csv,
+    parse_preview,
+)
 from app.services.transactions import (
     create_transaction,
     delete_transaction,
+    get_monthly_category_totals,
+    get_monthly_summary,
     get_user_transactions,
+    split_transaction,
+    unsplit_transaction,
     update_transaction,
 )
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
+@router.get("/trends", response_model=list[MonthlyTrendEntry])
+def monthly_trends(
+    months: int = Query(6, ge=1, le=24, description="Number of months to return (default 6)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Expense totals per category per month for the last N months.
+    Zero-filled — months with no transactions still appear with an empty categories map.
+    """
+    return get_monthly_category_totals(current_user.id, months, db)
+
+
+@router.get("/summary", response_model=MonthlySummaryOut)
+def monthly_summary(
+    month: int = Query(..., ge=1, le=12, description="Month (1-12)"),
+    year: int = Query(..., ge=2000, description="4-digit year"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Monthly summary: total income, total expenses, net balance, and per-category
+    breakdown with budget limit and remaining if a budget is set.
+    """
+    return get_monthly_summary(current_user.id, month, year, db)
+
+
 @router.get("/", response_model=list[TransactionOut])
 def list_transactions(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, le=500),
+    date_from: date | None = Query(None, description="Filter from date (inclusive), e.g. 2024-01-01"),
+    date_to: date | None = Query(None, description="Filter to date (inclusive), e.g. 2024-12-31"),
+    category: Category | None = Query(None, description="Filter by category"),
+    type: TransactionType | None = Query(None, description="Filter by type: income or expense"),
+    tag: str | None = Query(None, description="Filter by tag name (F29)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all transactions for the authenticated user."""
-    return get_user_transactions(current_user.id, db, skip, limit)
+    """List transactions for the authenticated user with optional filters."""
+    return get_user_transactions(
+        current_user.id, db, skip, limit,
+        date_from=date_from,
+        date_to=date_to,
+        category=category.value if category else None,
+        tx_type=type,
+        tag=tag,
+    )
+
+
+@router.get("/recurring", response_model=list[RecurringItemOut])
+def list_recurring(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Detect recurring (subscription-like) expense transactions."""
+    from app.services.recurring_service import detect
+    return detect(current_user.id, db)
+
+
+@router.post("/detect-recurring")
+def detect_recurring(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """F32 — Run the recurring-transaction detection pass and apply 'recurring' tags.
+
+    Idempotent: safe to call multiple times.  Returns a summary of how many
+    transactions were tagged and how many recurring merchant groups were found.
+    """
+    from app.services.recurring_service import apply_recurring_tags
+    return apply_recurring_tags(current_user.id, db)
+
+
+@router.get("/recurring-review", response_model=list[RecurringReviewGroup])
+def list_recurring_review_groups(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """F32-fu1 — auto-tagged 'recurring' groups still awaiting a decision.
+
+    Groups the user has confirmed drop out; groups they rejected no longer
+    carry the tag at all, so they never reappear here.
+    """
+    from app.services.recurring_service import list_recurring_review
+    return list_recurring_review(current_user.id, db)
+
+
+@router.post("/recurring-review", response_model=RecurringReviewResult)
+def resolve_recurring_review_group(
+    data: RecurringReviewAction,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """F32-fu1 — confirm or reject one auto-tagged recurring group.
+
+    Idempotent, and an unknown merchant returns 0 updates rather than 404, so
+    a double-submit from a stale page is harmless.
+    """
+    from app.services.recurring_service import resolve_recurring_group
+    try:
+        return resolve_recurring_group(
+            current_user.id, data.merchant, data.action, db
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.post("/", response_model=TransactionOut, status_code=201)
-def add_transaction(
+async def add_transaction(
     data: TransactionCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Create a new income or expense transaction."""
-    return create_transaction(data, current_user.id, db)
+    from app.core.ws_manager import manager
+    from app.services.budget_alert_service import check_budget_overspend
+
+    tx = create_transaction(data, current_user.id, db)
+    await manager.broadcast({
+        "event": "transaction_created",
+        "transaction": {
+            "id": tx.id,
+            "amount": str(tx.amount),
+            "type": tx.type,
+            "category": tx.category,
+            "description": tx.description,
+            "transaction_date": str(tx.transaction_date),
+            "currency": tx.currency,
+            "created_at": str(tx.created_at),
+            "user_id": tx.user_id,
+        },
+    })
+
+    # Check if this transaction tips a budget over its limit
+    if data.type == TransactionType.expense:
+        alert = check_budget_overspend(
+            current_user.id,
+            data.category.value,
+            tx.transaction_date.month,
+            tx.transaction_date.year,
+            db,
+        )
+        if alert:
+            await manager.send_to_user(current_user.id, alert)
+
+    return tx
 
 
 @router.patch("/{tx_id}", response_model=TransactionOut)
@@ -55,3 +211,84 @@ def remove_transaction(
 ):
     """Delete a transaction."""
     delete_transaction(tx_id, current_user.id, db)
+
+
+@router.post("/import", response_model=ImportResultOut)
+async def import_transactions(
+    file: UploadFile = File(..., description="ING or ABN AMRO CSV export"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Import transactions from a Dutch bank CSV export (ING or ABN AMRO).
+    Deduplicates against existing transactions by date+amount+description hash.
+    """
+    content = await file.read()
+    return import_csv(content, current_user.id, db)
+
+
+@router.post("/import/preview", response_model=ImportPreviewOut)
+async def import_preview(
+    file: UploadFile = File(..., description="Any CSV file"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Inspect an uploaded CSV without persisting anything: returns detected
+    headers, delimiter, and the first 5 data rows. Also returns the caller's
+    previously-saved column mapping (if any) so the wizard can pre-fill.
+    """
+    content = await file.read()
+    preview = parse_preview(content)
+    saved = get_saved_mapping(current_user.id, db)
+    return {**preview, "saved_mapping": saved}
+
+
+@router.post("/import/commit", response_model=ImportResultOut)
+async def import_commit(
+    file: UploadFile = File(..., description="CSV file to import"),
+    mapping: str = Form(..., description="JSON-encoded ImportMappingPayload"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Import a CSV using a user-provided column mapping. On success, the mapping
+    is persisted so the next upload pre-fills the same choices.
+    """
+    try:
+        payload = ImportMappingPayload.model_validate_json(mapping)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid mapping JSON: {exc}")
+
+    content = await file.read()
+    return commit_mapped_import(content, payload.model_dump(), current_user.id, db)
+
+
+@router.get("/import/mapping", response_model=ImportMappingPayload | None)
+def import_mapping(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Returns the user's most-recent saved column mapping, or null if none."""
+    return get_saved_mapping(current_user.id, db)
+
+
+# F25 — split a transaction into >=2 child rows (must sum exactly to parent).
+@router.post("/{tx_id}/split", response_model=TransactionOut)
+def split(
+    tx_id: int,
+    body: SplitRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return split_transaction(tx_id, current_user.id, body.children, db)
+
+
+@router.delete("/{tx_id}/split", response_model=TransactionOut)
+def unsplit(
+    tx_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Revert a split: deletes children, parent becomes a normal row."""
+    return unsplit_transaction(tx_id, current_user.id, db)

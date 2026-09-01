@@ -13,9 +13,17 @@ class UserOut(BaseModel):
     email: str
     full_name: str
     is_active: bool
+    base_currency: str
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class UserUpdate(BaseModel):
+    full_name: str | None = None
+    base_currency: str | None = None
+    current_password: str | None = None
+    new_password: str | None = None
 
 
 class Token(BaseModel):

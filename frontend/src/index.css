@@ -104,6 +104,53 @@ input, select, button {
   border-color: var(--accent);
 }
 
+/* F33 — "Try the demo" affordance on the login page. Deliberately styled as a
+   secondary action: it must read as distinct from the real Sign in button,
+   not compete with it. */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.25rem 0 1rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.auth-card .demo-button {
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent2);
+  border-radius: 8px;
+  padding: 0.65rem 0.9rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.auth-card .demo-button:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+.auth-card .demo-button:disabled { opacity: 0.6; cursor: default; }
+
+.auth-card .demo-hint {
+  margin-top: 0.6rem;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
 .auth-card button[type="submit"] {
   margin-top: 0.5rem;
   background: var(--accent);
@@ -415,4 +462,255 @@ input, select, button {
 @media (max-width: 600px) {
   .stats { grid-template-columns: 1fr; }
   .dashboard { padding: 0 1rem 2rem; }
+}
+
+/* ─── Transaction Filter Bar (F8) ────────────────────────── */
+.tx-filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+.tx-filter-search {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+.tx-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.tx-filter-input {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8rem;
+  font-family: inherit;
+  flex: 1;
+  min-width: 90px;
+}
+.tx-filter-num { max-width: 100px; flex: 0 0 auto; }
+.tx-filter-clear {
+  background: var(--expense);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.tx-filter-clear:hover { opacity: 0.85; }
+
+/* ─── Tag Filter Chips (F30) ─────────────────────────────── */
+.tx-tag-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding-top: 0.25rem;
+}
+.tx-tag-chip {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.75rem;
+  font-family: inherit;
+  background: transparent;
+  border: 1px solid rgba(99,102,241,0.35);
+  border-radius: 0.8rem;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.tx-tag-chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.tx-tag-chip--selected {
+  background: rgba(99,102,241,0.25);
+  border-color: var(--accent);
+  color: var(--accent2);
+  font-weight: 600;
+}
+
+/* ─── Subscriptions Card ─────────────────────────────────── */
+.subscriptions-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+.subscriptions-card h3 {
+  font-family: var(--font-head);
+  margin-bottom: 0.75rem;
+}
+.sub-total {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--expense);
+  margin-bottom: 0.75rem;
+}
+.sub-empty {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.sub-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+/* F32-fu1 — auto-tagged 'recurring' review queue. Mirrors .subscriptions-card
+   so it reads as a sibling of the panel it relates to. */
+.recurring-review-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+.recurring-review-card h3 {
+  font-family: var(--font-head);
+  margin-bottom: 0.35rem;
+}
+.rr-intro {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-bottom: 0.9rem;
+}
+.rr-intro code {
+  font-size: 0.75rem;
+  padding: 0.05rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.rr-error {
+  color: var(--expense);
+  font-size: 0.8rem;
+  margin-bottom: 0.6rem;
+}
+.rr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.rr-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.rr-row:last-child { border-bottom: none; }
+.rr-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.rr-merchant {
+  text-transform: capitalize;
+  font-weight: 600;
+}
+.rr-meta, .rr-dates {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.rr-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+.rr-actions button {
+  padding: 0.35rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  border: 1px solid var(--border);
+}
+.rr-actions button:disabled { opacity: 0.5; cursor: default; }
+.rr-confirm {
+  background: var(--income, #2f9e5f);
+  border-color: transparent;
+  color: #fff;
+}
+.rr-reject {
+  background: transparent;
+  color: var(--muted);
+}
+
+.sub-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 1rem;
+  align-items: baseline;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.sub-row:last-child { border-bottom: none; }
+.sub-merchant {
+  text-transform: capitalize;
+  font-weight: 500;
+}
+.sub-amount {
+  color: var(--expense);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sub-meta {
+  color: var(--muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+/* ─── Budget Alert Toasts ────────────────────────────────── */
+.budget-toast-stack {
+  position: fixed;
+  top: 1.5rem;
+  right: 1.5rem;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 380px;
+}
+.budget-toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: var(--expense);
+  color: #fff;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  font-weight: 500;
+  animation: toast-in 0.25s ease-out;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.budget-toast button {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  opacity: 0.7;
+  padding: 0 0.25rem;
+}
+.budget-toast button:hover { opacity: 1; }
+@keyframes toast-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
 }

@@ -1,0 +1,7 @@
+Datum;Naam / Omschrijving;Rekening;Tegenrekening;Code;Af Bij;Bedrag (EUR);MutatieSoort;Mededelingen
+20-03-2026;Albert Heijn;NL00INGB0000000001;NL00INGB0000000099;BA;Af;47,83;Betaalautomaat;Boodschappen
+21-03-2026;NS Treinen;NL00INGB0000000001;NL00INGB0000000010;OV;Af;12,50;Overschrijving;OV-chipkaart laden
+22-03-2026;Werkgever BV;NL00INGB0000000001;NL00INGB0000000200;OV;Bij;3.250,00;Salaris;Salaris maart 2026
+23-03-2026;Jumbo Supermarkt;NL00INGB0000000001;NL00INGB0000000099;BA;Af;35,21;Betaalautomaat;Boodschappen
+24-03-2026;Ziggo;NL00INGB0000000001;NL00INGB0000000300;OV;Af;49,95;Acceptgiro;Internet abonnement
+25-03-2026;Spotify;NL00INGB0000000001;NL00INGB0000000400;BA;Af;10,99;Betaalautomaat;Spotify Premium

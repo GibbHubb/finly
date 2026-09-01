@@ -1,5 +1,7 @@
 # 💸 Finly — Personal Finance Tracker
 
+![Tests](https://github.com/GibbHubb/finly/actions/workflows/test.yml/badge.svg)
+
 > Full-stack personal finance tracker built with **FastAPI** + **React**.  
 > Demonstrates REST API design, JWT auth, SQL (SQLite → Postgres), and React hooks & state.
 
@@ -13,13 +15,25 @@
 | DB        | SQLite (dev) / PostgreSQL (prod)        |
 | CI        | GitHub Actions                          |
 
-## Getting Started
+## Quick Start
+
+```bash
+cp .env.example .env
+# Fill in your values in .env
+docker compose up
+```
+
+App runs at http://localhost:3000, API at http://localhost:8000.
+
+---
+
+## Getting Started (without Docker)
 
 ### Backend
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r ../requirements.txt   # F34 — the list lives at the repo root
 alembic upgrade head
 uvicorn app.main:app --reload
 ```
@@ -69,3 +83,29 @@ chore(deps): bump fastapi to 0.111
 FastAPI auto-generates interactive docs at:
 - Swagger UI: http://localhost:8000/docs
 - ReDoc:       http://localhost:8000/redoc
+
+## End-to-end tests (Playwright)
+
+The `frontend/e2e/` directory contains Playwright specs covering the four
+core happy paths: login, add transaction, budget over-limit alert, savings
+goal progress.
+
+The suite spins up the FastAPI backend (with `E2E_MODE=1` exposing
+`/api/v1/test/reset`) and the Vite dev server automatically via
+`playwright.config.ts → webServer`.
+
+First-time setup (downloads ~200 MB of browser binaries):
+```bash
+cd frontend
+npm install
+npm run e2e:install
+```
+
+Run the suite:
+```bash
+npm run e2e         # headless
+npm run e2e:ui      # interactive Playwright UI mode
+```
+
+CI runs the same flow on every PR via `.github/workflows/e2e.yml`. Trace
+files are uploaded as artifacts on failure (`frontend/test-results/`).
