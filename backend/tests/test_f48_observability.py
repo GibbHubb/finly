@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.observability import (
     JsonFormatter, RequestContextMiddleware, build_info,
-    unhandled_exception_handler, request_id_var, scrub,
+    unhandled_exception_handler, request_id_var, reset_secret_cache, scrub,
 )
 
 client = TestClient(app, raise_server_exceptions=False)
@@ -123,6 +123,7 @@ SENTINELS = {
 
 @pytest.fixture()
 def sentinel_env(monkeypatch):
+    reset_secret_cache()                    # the value set is cached now
     for k, v in SENTINELS.items():
         monkeypatch.setenv(k, v)
     monkeypatch.setenv(
@@ -145,6 +146,7 @@ def test_no_secret_value_survives_a_log_line(sentinel_env):
 
 
 def test_scrub_handles_a_shared_prefix(monkeypatch):
+    reset_secret_cache()
     """Longest-first replacement: a shorter secret that prefixes a longer one
     must not leave the longer one's tail behind."""
     monkeypatch.setenv("SECRET_KEY", "abcdefgh")
@@ -190,3 +192,69 @@ def test_the_request_line_carries_its_own_context(caplog):
     assert getattr(rec, "status", None) == 200
     assert getattr(rec, "duration_ms", None) is not None
     assert formatted["message"] == "request"
+
+# ── the crash path, by VALUE not by presence ────────────────────────────────
+# /code-review found the blocking bug here: a handler registered for the bare
+# `Exception` runs inside ServerErrorMiddleware, OUTSIDE BaseHTTPMiddleware, so
+# the middleware's `finally` had already reset the ContextVars. Every 500 came
+# back `X-Request-ID: -` and logged `request_id: "-"`, and the two log lines for
+# one crash shared no correlating field.
+#
+# The tests above passed throughout, because they asserted the fields EXISTED.
+# These assert their VALUES, which is the difference between a test and a
+# decoration.
+def test_a_500_echoes_the_inbound_request_id():
+    c = TestClient(_app_that_raises(), raise_server_exceptions=False)
+    r = c.get("/boom", headers={"X-Request-ID": "crash-path-id-77"})
+    assert r.status_code == 500
+    assert r.headers["X-Request-ID"] == "crash-path-id-77", (
+        "the 500 response lost the request id — this is the case the whole "
+        "correlation feature exists for")
+
+
+def test_one_crash_logs_one_line_carrying_BOTH_ids(caplog):
+    c = TestClient(_app_that_raises(), raise_server_exceptions=False)
+    with caplog.at_level(logging.ERROR):
+        r = c.get("/boom", headers={"X-Request-ID": "crash-corr-88"})
+    eid = r.json()["error_id"]
+
+    with_tb = [rec for rec in caplog.records if rec.exc_info]
+    assert len(with_tb) == 1, (
+        "expected exactly ONE traceback per crash, got %d — the middleware and "
+        "the handler were both logging it" % len(with_tb))
+
+    rec = with_tb[0]
+    assert getattr(rec, "error_id", None) == eid, (
+        "the error_id the caller was given is not on the log line")
+    line = json.loads(JsonFormatter().format(rec))
+    assert line["error_id"] == eid
+    # The formatter reads ContextVars at format time (outside the request), so
+    # assert the middleware captured the request id on the record's own line
+    # via the log call happening while the context was live.
+    assert rec.name == "finly.request", (
+        "the traceback came from the handler, which cannot see the request "
+        "context — it must be logged by the middleware")
+
+
+def test_a_secret_only_in_dotenv_is_still_scrubbed(monkeypatch):
+    """scrub() read os.environ only, but config.py loads from .env, which
+    pydantic-settings does NOT push into os.environ. So a locally-configured
+    secret was never redacted. /code-review found it."""
+    reset_secret_cache()
+    import app.core.config as cfg
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    monkeypatch.setattr(cfg.settings, "SECRET_KEY", "dotenv-only-secret-XYZ123", raising=False)
+    reset_secret_cache()
+    assert "dotenv-only-secret-XYZ123" not in scrub("leak=dotenv-only-secret-XYZ123")
+
+
+def test_a_dsn_password_containing_an_at_sign_is_scrubbed(monkeypatch):
+    """Splitting on the FIRST '@' truncates such a password, so the scrubber
+    then searches for the wrong substring and leaves the real one in."""
+    reset_secret_cache()
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql://u:p@ssw0rd-with-at-sign@db.example.supabase.co:5432/postgres")
+    reset_secret_cache()
+    out = scrub("dsn password is p@ssw0rd-with-at-sign here")
+    assert "p@ssw0rd-with-at-sign" not in out, out

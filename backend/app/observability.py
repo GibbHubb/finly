@@ -44,37 +44,91 @@ request_method_var: contextvars.ContextVar[str] = contextvars.ContextVar(
     "request_method", default="-"
 )
 
-# Values that must never reach a log line or a response body. Read once at
-# import: these are process-lifetime settings, and re-reading os.environ per log
-# line would be a measurable cost on a per-request logger.
+# Values that must never reach a log line or a response body.
+#
+# The set is computed lazily and CACHED (see _secret_values) — an earlier
+# comment here claimed they were "read once at import", which was simply false:
+# every log line re-read os.environ six times plus split the DSN. /code-review
+# caught the comment contradicting the code.
 _SECRET_ENV_KEYS = (
     "SECRET_KEY", "FERNET_KEY", "CRON_SECRET",
     "GOCARDLESS_SECRET_ID", "GOCARDLESS_SECRET_KEY",
 )
 
 
+#: Minimum length for a value to be scrubbed. A 3-character secret would match
+#: inside ordinary words and redact half the log. Values shorter than this are
+#: NOT scrubbed — deliberate, and the reason a real secret should never be short.
+_MIN_SECRET_LEN = 8
+
+_CACHED: list[str] | None = None
+
+
+def _raw_secret_sources() -> list[str]:
+    """Every place a secret value can be read from.
+
+    os.environ is NOT sufficient. `app/core/config.py` loads via
+    pydantic-settings with `env_file=".env"`, which populates the Settings
+    object WITHOUT writing into os.environ — so a secret defined only in .env
+    was invisible to the scrubber on any local run. /code-review found this by
+    building a throwaway BaseSettings and checking os.environ afterwards.
+    Production on Vercel injects real env vars, so only local runs were exposed;
+    a scrubber that works everywhere except where people develop is not much of
+    a scrubber.
+    """
+    out = []
+    for k in _SECRET_ENV_KEYS:
+        out.append(os.environ.get(k) or "")
+    out.append(os.environ.get("DATABASE_URL") or "")
+    try:
+        from app.core.config import settings
+        for k in _SECRET_ENV_KEYS + ("DATABASE_URL",):
+            out.append(str(getattr(settings, k, "") or ""))
+    except Exception:                                       # noqa: BLE001
+        pass                    # config not importable here: env vars only
+    return out
+
+
+def _dsn_password(dsn: str) -> str:
+    """The password out of a DSN, tolerating an unencoded '@' in it.
+
+    Splitting on the FIRST '@' truncates a password that contains one, so the
+    scrubber would then hunt for the wrong substring and leave the real password
+    in the log. rpartition takes the LAST '@', which is the host separator.
+    """
+    if "://" not in dsn or "@" not in dsn:
+        return ""
+    creds = dsn.split("://", 1)[1].rpartition("@")[0]
+    return creds.split(":", 1)[1] if ":" in creds else ""
+
+
 def _secret_values() -> list[str]:
-    """The literal secret values to scrub, longest first.
+    """The literal secret values to scrub, longest first — computed once.
 
     Longest-first matters: if two secrets share a prefix, replacing the shorter
     one first leaves the tail of the longer one in the output.
     """
+    global _CACHED
+    if _CACHED is not None:
+        return _CACHED
     vals = []
-    for k in _SECRET_ENV_KEYS:
-        v = os.environ.get(k) or ""
-        if len(v) >= 8:                 # too-short values would match everywhere
-            vals.append(v)
-    dsn = os.environ.get("DATABASE_URL") or ""
-    # The password out of the DSN, which is the one part of it that must never
-    # appear anywhere. The host is scrubbed from responses by the caller, not
-    # here — a host in a private log line is useful, a password never is.
-    if "://" in dsn and "@" in dsn:
-        creds = dsn.split("://", 1)[1].split("@", 1)[0]
-        if ":" in creds:
-            pw = creds.split(":", 1)[1]
-            if len(pw) >= 8:
+    for raw in _raw_secret_sources():
+        if not raw:
+            continue
+        if "://" in raw and "@" in raw:          # a DSN: take only the password
+            pw = _dsn_password(raw)
+            if len(pw) >= _MIN_SECRET_LEN:
                 vals.append(pw)
-    return sorted(set(vals), key=len, reverse=True)
+        elif len(raw) >= _MIN_SECRET_LEN:
+            vals.append(raw)
+    _CACHED = sorted(set(vals), key=len, reverse=True)
+    return _CACHED
+
+
+def reset_secret_cache() -> None:
+    """Drop the cache. For tests that monkeypatch the environment."""
+    global _CACHED
+    _CACHED = None
 
 
 def scrub(text: str) -> str:
@@ -162,11 +216,30 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             try:
                 response = await call_next(request)
             except Exception:
-                # The 500 handler produces the response; this only guarantees the
-                # request line is emitted with its duration even on a crash.
+                # The MIDDLEWARE owns the error id, not the handler.
+                #
+                # This is the second time the same mistake bit this file, and
+                # the second version is the subtle one. A handler registered for
+                # the bare `Exception` is routed by Starlette into
+                # ServerErrorMiddleware, which is the OUTERMOST layer — outside
+                # BaseHTTPMiddleware entirely. So by the time the handler ran,
+                # the `finally` below had already reset the ContextVars, and
+                # every 500 came back with `X-Request-ID: -` and logged
+                # `request_id: "-"`. Worse, the two log lines for one crash
+                # shared no correlating field at all: this one had the request
+                # id and no error_id, the handler's had the error_id and no
+                # request id. On a plan with no log retention that is the exact
+                # case the whole feature exists for.
+                #
+                # So the id is generated HERE, where the context is still live,
+                # stashed on request.state for the handler to return, and the
+                # traceback is logged exactly ONCE with both ids on it.
+                error_id = uuid.uuid4().hex[:12]
+                request.state.error_id = error_id
+                request.state.request_id = rid
                 logger.exception(
                     "request failed",
-                    extra={"status": 500,
+                    extra={"status": 500, "error_id": error_id,
                            "duration_ms": round((time.perf_counter() - started) * 1000, 1)},
                 )
                 raise
@@ -198,14 +271,28 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     useless. The exception text is deliberately NOT returned: that is the same
     mistake /health was making, one endpoint over.
     """
-    error_id = uuid.uuid4().hex[:12]
-    logging.getLogger("finly.error").exception(
-        "unhandled exception", extra={"error_id": error_id, "status": 500}
-    )
+    # Read the ids off request.state, where RequestContextMiddleware put them
+    # while its context was still live. Do NOT read the ContextVars here: this
+    # handler runs inside ServerErrorMiddleware, OUTSIDE BaseHTTPMiddleware, so
+    # by now they are back to "-". Do NOT log here either — the middleware has
+    # already logged the traceback once, with both ids on the same line.
+    error_id = getattr(request.state, "error_id", None)
+    rid = getattr(request.state, "request_id", None)
+    if not error_id:
+        # Only reachable if something raised outside the middleware (e.g. in
+        # another middleware). Generate rather than return nothing, and say so.
+        error_id = uuid.uuid4().hex[:12]
+        logging.getLogger("finly.error").exception(
+            "unhandled exception outside the request middleware",
+            extra={"error_id": error_id, "status": 500},
+        )
+    if not rid:
+        inbound = (request.headers.get("X-Request-ID") or "").strip()
+        rid = inbound[:64] or "-"
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal error", "error_id": error_id},
-        headers={"X-Request-ID": request_id_var.get()},
+        headers={"X-Request-ID": rid},
     )
 
 

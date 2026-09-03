@@ -56,6 +56,11 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # F48 — without this the SPA's own JS cannot READ X-Request-ID on a
+    # cross-origin response: `allow_headers` governs the request, `expose_headers`
+    # the response. Devtools would show the header while `res.headers.get(...)`
+    # returned null, which is a confusing way to lose a correlation id.
+    expose_headers=["X-Request-ID"],
 )
 
 # F48 — request id in, request id out, one log line per request. Added AFTER
