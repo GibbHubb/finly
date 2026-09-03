@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -16,10 +17,15 @@ import app.models.fx_rate         # noqa: F401
 import app.models.bank_connection  # noqa: F401  — F27
 import app.models.tag               # noqa: F401  — F29
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+# F48 — one JSON object per line, so a real run pipes through `jq`. This
+# REPLACES the root handlers rather than adding one: basicConfig's plain-text
+# handler would otherwise emit every line twice, once parseable and once not.
+from app.observability import (  # noqa: E402
+    RequestContextMiddleware, build_info, configure_logging,
+    unhandled_exception_handler,
 )
+
+configure_logging(logging.INFO)
 logger = logging.getLogger(__name__)
 
 # F34 — `Base.metadata.create_all(bind=engine)` was here.
@@ -52,6 +58,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# F48 — request id in, request id out, one log line per request. Added AFTER
+# CORS so the id header survives the CORS response wrapping.
+app.add_middleware(RequestContextMiddleware)
+
+# F48 — an unhandled exception must return an id the user can quote, not
+# `{"detail":"Internal Server Error"}`. `backend/index.py` records that this
+# plan has no log retention, so the id in the caller's hand is sometimes the
+# only correlation that still exists.
+app.add_exception_handler(Exception, unhandled_exception_handler)
+
+
+@app.get("/api/v1/meta", tags=["meta"])
+def meta():
+    """Which build is serving. F38 had to answer this by clicking around."""
+    return {"version": app.version, **build_info()}
+
+
 app.include_router(api_router)
 # F34 — the WebSocket router (`/ws/transactions`) is gone. Vercel's serverless
 # functions cannot hold a socket open, so it could only ever have been a
@@ -77,10 +100,29 @@ def health():
             conn.execute(text("SELECT 1"))
         return {"status": "ok", "db": "up"}
     except Exception as exc:  # noqa: BLE001 — any failure to reach the DB counts
-        logger.exception("Health check: database unreachable")
+        # F48 — this used to return `str(exc)[:200]` to the caller, and /health
+        # is unauthenticated and publicly routed (vercel.json:22).
+        #
+        # Measured 2026-09-03 with a deliberately fake DSN: on a DNS failure the
+        # 200 characters contained the database HOST verbatim —
+        #   (psycopg2.OperationalError) could not translate host name
+        #   "db.<project-ref>.supabase.co" to address: ...
+        # i.e. the Supabase project ref, handed to anyone who curls the endpoint.
+        # The USER appears in the auth-failure shape ("password authentication
+        # failed for user ..."), which is server-generated and was not
+        # reproduced here. The PASSWORD does NOT appear in psycopg2 error text —
+        # so this is information disclosure, not credential disclosure, and the
+        # earlier note claiming the password leaked was wrong.
+        #
+        # The endpoint must still be ABLE to fail (F34 added it because a health
+        # check that cannot fail tells you nothing — PT22/RP15). So it keeps the
+        # 503; what changes is that the detail goes to the log under an id, and
+        # the caller gets only the id.
+        error_id = uuid.uuid4().hex[:12]
+        logger.exception("Health check: database unreachable [error_id=%s]", error_id)
         return JSONResponse(
             status_code=503,
-            content={"status": "error", "db": "down", "error": str(exc)[:200]},
+            content={"status": "error", "db": "down", "error_id": error_id},
         )
 
 
