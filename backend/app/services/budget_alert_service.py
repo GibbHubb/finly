@@ -1,11 +1,10 @@
 """Check whether a transaction tips a category over its budget limit."""
 from decimal import Decimal
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.budget import Budget
-from app.models.transaction import Transaction
+from app.services.transactions import category_spend  # F39 — one shared spend calculator
 
 
 def check_budget_overspend(
@@ -31,17 +30,10 @@ def check_budget_overspend(
     if budget is None:
         return None
 
-    spent: Decimal = (
-        db.query(func.coalesce(func.sum(Transaction.amount), 0))
-        .filter(
-            Transaction.user_id == user_id,
-            Transaction.category == category,
-            Transaction.type == "expense",
-            func.extract("month", Transaction.transaction_date) == month,
-            func.extract("year", Transaction.transaction_date) == year,
-        )
-        .scalar()
-    ) or Decimal("0")
+    # F39 — was a second, wrong copy of the spend sum here (raw `amount`, split parents
+    # double-counted). Now the single shared calculator, so this alert and the Budgets
+    # bar always agree.
+    spent: Decimal = category_spend(user_id, category, month, year, db)
 
     limit = budget.limit_amount
     if spent > limit:

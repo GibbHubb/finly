@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import func
+from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 
@@ -25,6 +25,38 @@ def _excluding_split_parents(q):
         .where(Transaction.parent_transaction_id.isnot(None))
     )
     return q.filter(Transaction.id.notin_(children_parent_ids))
+
+
+# F39 — the ONE place "how much has this user spent in this category this month" is
+# expressed. The Budgets bar (get_monthly_summary) and the overspend alert
+# (check_budget_overspend) used to compute this two different ways: the bar summed
+# coalesce(base_amount, amount) and excluded split parents; the alert summed the raw,
+# un-converted `amount` and double-counted split parents. On a mixed-currency or split
+# expense they disagreed by a factor the user could see. Both now go through here.
+def expense_amount_expr():
+    """The amount to sum for a spend total: the base-currency value where it has been
+    computed (F12), falling back to the raw amount for un-backfilled rows."""
+    return func.coalesce(Transaction.base_amount, Transaction.amount)
+
+
+def category_spend(
+    user_id: int,
+    category,
+    month: int,
+    year: int,
+    db: Session,
+) -> Decimal:
+    """Total EXPENSE spend for one user/category/month, in base currency, excluding
+    split parents. This is what a budget is measured against."""
+    q = db.query(func.coalesce(func.sum(expense_amount_expr()), 0)).filter(
+        Transaction.user_id == user_id,
+        Transaction.category == category,
+        Transaction.type == TransactionType.expense,
+        extract("month", Transaction.transaction_date) == month,
+        extract("year", Transaction.transaction_date) == year,
+    )
+    spent = _excluding_split_parents(q).scalar()
+    return Decimal(str(spent)) if spent is not None else Decimal("0")
 
 
 def _user_base_currency(user_id: int, db: Session) -> str:
@@ -105,16 +137,20 @@ def get_monthly_summary(user_id: int, month: int, year: int, db: Session) -> dic
     Returns total income, total expenses, net, and a per-category breakdown
     that includes spent amount vs. budget limit (if set) for the given month/year.
     """
-    # Prefer base_amount (already converted to user's base currency); fall back
-    # to amount for pre-F12 rows that were never backfilled.
-    amount_expr = func.coalesce(Transaction.base_amount, Transaction.amount)
+    # F39 — the same expression category_spend() uses, so the Budgets bar and the
+    # overspend alert can never diverge on how a spend is measured.
+    amount_expr = expense_amount_expr()
     rows = (
         _excluding_split_parents(  # F25 — exclude split parents from totals
             db.query(Transaction.category, Transaction.type, func.sum(amount_expr))
             .filter(
                 Transaction.user_id == user_id,
-                func.strftime("%m", Transaction.transaction_date) == f"{month:02d}",
-                func.strftime("%Y", Transaction.transaction_date) == str(year),
+                # F38 — `func.strftime` is SQLite-only. On the deployed Postgres
+                # it raised UndefinedFunction and this endpoint 500'd, while the
+                # SQLite-backed test suite stayed green. `extract` is compiled by
+                # both dialects.
+                extract("month", Transaction.transaction_date) == month,
+                extract("year", Transaction.transaction_date) == year,
             )
         )
         .group_by(Transaction.category, Transaction.type)
@@ -178,12 +214,17 @@ def get_monthly_category_totals(user_id: int, months: int, db: Session) -> list[
         start_year -= 1
     start = date(start_year, start_month, 1)
 
-    month_expr = func.strftime("%Y-%m", Transaction.transaction_date)
+    # F38 — grouped on `strftime('%Y-%m', …)`, which exists only in SQLite; the
+    # deployed Postgres 500'd and the Trends page showed "Could not load trends".
+    # Group on the two portable extracts instead and build the 'YYYY-MM' key here.
+    year_expr = extract("year", Transaction.transaction_date)
+    month_num_expr = extract("month", Transaction.transaction_date)
     amount_expr = func.coalesce(Transaction.base_amount, Transaction.amount)
     rows = (
         _excluding_split_parents(  # F25 — same invariant as monthly summary
             db.query(
-                month_expr.label("month"),
+                year_expr.label("year"),
+                month_num_expr.label("month_num"),
                 Transaction.category,
                 func.sum(amount_expr).label("total"),
             )
@@ -193,7 +234,7 @@ def get_monthly_category_totals(user_id: int, months: int, db: Session) -> list[
                 Transaction.transaction_date >= start,
             )
         )
-        .group_by(month_expr, Transaction.category)
+        .group_by(year_expr, month_num_expr, Transaction.category)
         .all()
     )
 
@@ -206,7 +247,9 @@ def get_monthly_category_totals(user_id: int, months: int, db: Session) -> list[
             m = 1
             y += 1
 
-    for month_key, category, total in rows:
+    for row_year, row_month, category, total in rows:
+        # Postgres returns Decimal from extract(), SQLite an int — normalise both.
+        month_key = f"{int(row_year):04d}-{int(row_month):02d}"
         cat_key = category.value if hasattr(category, "value") else str(category)
         if month_key in skeleton:
             skeleton[month_key][cat_key] = total
