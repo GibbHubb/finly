@@ -22,26 +22,33 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "html", "lcov"],
       include: ["src/services/**", "src/store/**", "src/hooks/**", "src/utils/**"],
-      exclude: ["**/*.d.ts", "src/test/**"],
-      // F34 — a RATCHET at where coverage actually is, not a target.
+      // F36 — `**/__tests__/**` was missing, so the test files inside
+      // src/store and src/services counted as covered source and flattered
+      // every figure. Excluding them lowers the reported number and makes it
+      // mean something.
+      exclude: ["**/*.d.ts", "src/test/**", "**/__tests__/**"],
+      // A RATCHET at where coverage actually is, not a target.
       //
-      // These were 70 across the board, set in April when `src/services`,
-      // `src/store`, `src/hooks` and `src/utils` held a handful of files and CI
-      // was green. Twenty-eight commits of features then landed on a branch CI
-      // never ran on, none of them with tests, and the real figures are now
-      // lines 22.2 / functions 47.4 / branches 67.6. The first push to `main`
-      // since April failed on this, which is the check doing its job five
-      // months late.
+      // F34 found these at 70 across the board — set in April, when these four
+      // directories held a handful of files — while the real figures had fallen
+      // to lines 22.2 / functions 47.4 / branches 67.6 after twenty-eight
+      // commits of features landed on a branch CI never ran on. F34 lowered the
+      // gate to those real numbers rather than delete it, on the grounds that a
+      // ratchet can only be raised.
       //
-      // Lowering a threshold to green is normally how a quality gate dies, so
-      // this is deliberately set to the CURRENT number rather than a round one:
-      // it can only be raised, and any new untested code trips it immediately.
-      // Getting back to 70 is F36.
+      // F36 (2026-09-02) raised it back and then some: `auth.ts`,
+      // `transactions.ts`, `rules.ts`, `savings.ts`, `authStore`,
+      // `savingsStore`, `transactionStore`, both `utils` and all three hooks
+      // went from 0% to covered, and the measured figures are now lines 99.2 /
+      // functions 100 / branches 95.8 — past the original 70 bar, not back to
+      // it. The thresholds below sit a few points under the measured numbers:
+      // close enough that dropping a tested module trips the gate, loose enough
+      // that an ordinary refactor does not.
       thresholds: {
-        lines: 22,
-        functions: 47,
-        branches: 67,
-        statements: 22,
+        lines: 95,
+        functions: 95,
+        branches: 92,
+        statements: 95,
       },
     },
   },

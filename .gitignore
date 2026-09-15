@@ -28,6 +28,9 @@ Thumbs.db
 # every CI checkout started with one machine's stale run in place.
 backend/.coverage
 backend/coverage.xml
+# F36 — the frontend half of the same rule: `vitest --coverage` writes an
+# html/lcov tree here, which is build output and was not ignored.
+frontend/coverage/
 
 # Playwright run output — F37
 frontend/test-results/
