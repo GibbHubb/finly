@@ -13,7 +13,8 @@
       "src": "backend/index.py",
       "use": "@vercel/python",
       "config": {
-        "includeFiles": "**"
+        "includeFiles": "**",
+        "excludeFiles": "{frontend/**,**/node_modules/**,**/tests/**,**/.pytest_cache/**,**/*.db,**/coverage.xml,**/.coverage}"
       }
     }
   ],
