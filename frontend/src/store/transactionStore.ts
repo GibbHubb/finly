@@ -5,6 +5,9 @@ import { transactionService } from "@/services/transactions";
 interface TransactionState {
   transactions: Transaction[];
   isLoading: boolean;
+  /** F38 — set when the list fetch fails, so the UI can say so instead of
+   *  spinning. Null while loading and after a successful fetch. */
+  error: string | null;
   forecast: ForecastResult | null;
   forecastLoading: boolean;
   recurring: RecurringItem[];
@@ -21,15 +24,31 @@ interface TransactionState {
 export const useTransactionStore = create<TransactionState>((set, get) => ({
   transactions: [],
   isLoading: false,
+  error: null,
   forecast: null,
   forecastLoading: false,
   recurring: [],
   recurringLoading: false,
 
+  // F38 — this had no failure path at all. A rejected list request left
+  // `isLoading` true forever, so the dashboard showed "Loading…" and €0.00
+  // tiles with nothing to say why — and because the rejection happened inside
+  // an effect it never reached `window.onerror`, so a Playwright run watching
+  // `pageerror` reported a clean page.
   fetch: async () => {
-    set({ isLoading: true });
-    const transactions = await transactionService.list();
-    set({ transactions, isLoading: false });
+    set({ isLoading: true, error: null });
+    try {
+      const transactions = await transactionService.list();
+      set({ transactions, isLoading: false, error: null });
+    } catch (err) {
+      set({
+        isLoading: false,
+        error:
+          err instanceof Error
+            ? `Could not load transactions — ${err.message}`
+            : "Could not load transactions — please try again.",
+      });
+    }
   },
 
   add: async (payload) => {

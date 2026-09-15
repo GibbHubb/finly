@@ -28,7 +28,7 @@ const CONFIDENCE_COLOR: Record<string, string> = {
 
 export default function DashboardPage() {
   const { user, logout, baseCurrency, setBaseCurrency } = useAuthStore();
-  const { transactions, totalIncome, totalExpense, balance, isLoading } = useTransactions();
+  const { transactions, totalIncome, totalExpense, balance, isLoading, error: txError } = useTransactions();
   const { add, remove, fetch: refetchTransactions, fetchForecast, forecast, forecastLoading, importCsv, fetchRecurring, recurring, recurringLoading } = useTransactionStore();
   const [splitTx, setSplitTx] = useState<Transaction | null>(null);  // F25
   const navigate = useNavigate();  // F26 — drill-down from pie slice
@@ -472,6 +472,12 @@ export default function DashboardPage() {
           />
 
           {isLoading && <p>Loading…</p>}
+          {/* F38 — a failed list fetch used to look identical to a slow one. */}
+          {txError && (
+            <p className="tx-error" style={{ color: "var(--expense)", fontSize: "0.85rem", padding: "0.5rem 0" }}>
+              {txError}
+            </p>
+          )}
           {(() => {
             // F30: when tags are selected, start from the tag-filtered working list
             // (separate from `transactions` so charts are unaffected).

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "@/test/msw/server";
 import { useBudgetStore } from "@/store/budgetStore";
 import { resetBudgets } from "@/test/msw/handlers";
 import type { Budget } from "@/types";
@@ -12,7 +14,7 @@ const sample: Budget = {
 };
 
 function resetStore(): void {
-  useBudgetStore.setState({ budgets: [], isLoading: false });
+  useBudgetStore.setState({ budgets: [], isLoading: false, error: null });
 }
 
 describe("budgetStore", () => {
@@ -85,5 +87,40 @@ describe("budgetStore", () => {
     await useBudgetStore.getState().remove(sample.id);
 
     expect(useBudgetStore.getState().budgets).toEqual([]);
+  });
+});
+
+// F38 — budgetStore.fetch had the same missing failure path as
+// transactionStore: a rejected request left isLoading true forever, so the
+// page showed "Loading…" and nothing said why.
+describe("budgetStore.fetch failure", () => {
+  beforeEach(() => {
+    resetStore();
+    resetBudgets();
+    localStorage.setItem("token", "test-token");
+  });
+
+  it("surfaces an error and stops loading when the request fails", async () => {
+    server.use(
+      http.get("*/api/v1/budgets/", () =>
+        HttpResponse.json({ detail: "boom" }, { status: 500 })
+      )
+    );
+
+    await expect(useBudgetStore.getState().fetch(9, 2026)).resolves.toBeUndefined();
+
+    const state = useBudgetStore.getState();
+    expect(state.isLoading).toBe(false);
+    expect(state.error).toMatch(/could not load budgets/i);
+    expect(state.budgets).toEqual([]);
+  });
+
+  it("clears a previous error on a later successful fetch", async () => {
+    useBudgetStore.setState({ error: "Could not load budgets — old" });
+    resetBudgets([sample]);
+
+    await useBudgetStore.getState().fetch(6, 2024);
+
+    expect(useBudgetStore.getState().error).toBeNull();
   });
 });

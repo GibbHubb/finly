@@ -15,7 +15,7 @@ export default function BudgetsPage() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
 
-  const { budgets, isLoading } = useBudgets(month, year);
+  const { budgets, isLoading, error: budgetError } = useBudgets(month, year);
   const { add, remove } = useBudgetStore();
   const { transactions } = useTransactions();
 
@@ -102,6 +102,11 @@ export default function BudgetsPage() {
       {/* Budget progress cards */}
       {isLoading ? (
         <p style={{ color: "var(--muted)" }}>Loading…</p>
+      ) : budgetError ? (
+        /* F38 — a failed load used to be indistinguishable from "no budgets set". */
+        <p className="budget-error" style={{ color: "var(--expense)", marginBottom: "1.5rem" }}>
+          {budgetError}
+        </p>
       ) : categoriesWithBudget.length === 0 ? (
         <p style={{ color: "var(--muted)", marginBottom: "1.5rem" }}>
           No budgets set for {MONTH_NAMES[month - 1]} {year}. Add one below.
@@ -117,8 +122,13 @@ export default function BudgetsPage() {
                   {b.over && " ⚠ over budget"}
                 </span>
               </div>
-              <div style={trackStyle}>
+              {/* F38 — the track and the fill carried no class at all, so no
+                  browser check could ever assert "budget bars render"; the
+                  verification looked for them for months and found nothing. */}
+              <div className="budget-track" style={trackStyle}>
                 <div
+                  className="budget-bar"
+                  data-pct={Math.round(b.pct)}
                   style={{
                     ...barStyle,
                     width: `${b.pct}%`,

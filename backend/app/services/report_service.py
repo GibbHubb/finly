@@ -11,7 +11,7 @@ from __future__ import annotations
 from decimal import Decimal
 from io import BytesIO
 
-from sqlalchemy import func
+from sqlalchemy import extract
 from sqlalchemy.orm import Session
 
 from app.models.budget import Budget  # noqa: F401 — keeps model registered
@@ -68,7 +68,9 @@ def _biggest_expense(user_id: int, year: int, db: Session) -> Transaction | None
         .filter(
             Transaction.user_id == user_id,
             Transaction.type == TransactionType.expense,
-            func.strftime("%Y", Transaction.transaction_date) == str(year),
+            # F38 — SQLite-only strftime; the deployed Postgres 500'd on the
+            # whole year-in-review PDF. `extract` compiles on both dialects.
+            extract("year", Transaction.transaction_date) == year,
         )
         .order_by(Transaction.amount.desc())
     )
