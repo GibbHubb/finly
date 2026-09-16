@@ -138,4 +138,18 @@ describe("authStore", () => {
     expect(useAuthStore.getState().baseCurrency).toBe("EUR");
     expect(useAuthStore.getState().user?.base_currency).toBe("EUR");
   });
+
+  it("F55: a refused change (FX outage) rolls back AND surfaces the server's message", async () => {
+    const detail = "Exchange rates are unavailable right now, so your base currency was not changed. Try again later.";
+    useAuthStore.setState({ user, baseCurrency: "EUR", baseCurrencyError: null });
+    server.use(
+      http.patch("*/api/v1/auth/me", () => HttpResponse.json({ detail }, { status: 503 }))
+    );
+
+    await useAuthStore.getState().setBaseCurrency("USD");
+
+    expect(useAuthStore.getState().baseCurrency).toBe("EUR");
+    expect(useAuthStore.getState().user?.base_currency).toBe("EUR");
+    expect(useAuthStore.getState().baseCurrencyError).toBe(detail);
+  });
 });

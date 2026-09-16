@@ -41,6 +41,13 @@ class TransactionUpdate(BaseModel):
     transaction_date: date | None = None
     currency: str | None = None
 
+    # F55 — a currency edit now re-prices the row, so it gets the same check as create:
+    # an unsupported code would otherwise be stored with a base_amount of NULL.
+    @field_validator("currency")
+    @classmethod
+    def currency_supported(cls, v):
+        return TransactionCreate.currency_supported(v)
+
 
 class TagBrief(BaseModel):
     id: int

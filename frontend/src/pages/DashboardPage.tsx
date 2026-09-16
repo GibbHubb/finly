@@ -27,7 +27,7 @@ const CONFIDENCE_COLOR: Record<string, string> = {
 };
 
 export default function DashboardPage() {
-  const { user, logout, baseCurrency, setBaseCurrency } = useAuthStore();
+  const { user, logout, baseCurrency, setBaseCurrency, baseCurrencyError } = useAuthStore();
   const { transactions, totalIncome, totalExpense, balance, isLoading, error: txError } = useTransactions();
   const { add, remove, fetch: refetchTransactions, fetchForecast, forecast, forecastLoading, importCsv, fetchRecurring, recurring, recurringLoading } = useTransactionStore();
   const [splitTx, setSplitTx] = useState<Transaction | null>(null);  // F25
@@ -35,6 +35,7 @@ export default function DashboardPage() {
   const [banks, setBanks] = useState<BankStatus[]>([]);  // F27
   const [bankBusy, setBankBusy] = useState(false);  // F27
   const [bankMsg, setBankMsg] = useState<string | null>(null);  // F27
+  const [addError, setAddError] = useState<string | null>(null);  // F55
 
   // F27 — load bank-connection status on mount
   useEffect(() => {
@@ -182,7 +183,15 @@ export default function DashboardPage() {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    await add(form);
+    setAddError(null);
+    try {
+      await add(form);
+    } catch (err: unknown) {
+      // F55 — a save the server refuses (e.g. 503: no exchange rate) was an unhandled
+      // rejection with nothing on screen. Keep the form filled so the user can retry.
+      setAddError(apiErrorMessage(err, "Could not save the transaction"));
+      return;
+    }
     setForm((f) => ({ ...f, amount: 0, description: "" }));
     // Refresh forecast after adding a transaction
     fetchForecast(now.getMonth() + 1, now.getFullYear());
@@ -250,6 +259,12 @@ export default function DashboardPage() {
         </select>
         <button onClick={logout} className="btn-ghost">Sign out</button>
       </header>
+      {/* F55 — the selector already snaps back on a refused change; this says why. */}
+      {baseCurrencyError && (
+        <p className="tx-error" role="alert" style={{ color: "var(--expense)", fontSize: "0.85rem", padding: "0.5rem 0" }}>
+          {baseCurrencyError}
+        </p>
+      )}
 
       <div className="stats">
         <div className="stat-card income">
@@ -365,6 +380,7 @@ export default function DashboardPage() {
           <input placeholder="Description (optional)" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
           <input type="date" value={form.transaction_date} onChange={(e) => setForm((f) => ({ ...f, transaction_date: e.target.value }))} required />
           <button type="submit">Add</button>
+          {addError && <div className="import-toast error">{addError}</div>}
 
           {/* Import CSV */}
           <div className="import-section">

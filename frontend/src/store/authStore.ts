@@ -1,12 +1,15 @@
 import { create } from "zustand";
 import type { User } from "@/types";
 import { authService } from "@/services/auth";
+import { apiErrorMessage } from "@/utils/errors";
 
 interface AuthState {
   user: User | null;
   token: string | null;
   isLoading: boolean;
   baseCurrency: string;
+  /** F55 — why the last base-currency change was refused; null once one succeeds. */
+  baseCurrencyError: string | null;
   login: (email: string, password: string) => Promise<void>;
   demoLogin: () => Promise<void>;
   logout: () => void;
@@ -19,6 +22,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   token: localStorage.getItem("token"),
   isLoading: false,
   baseCurrency: "EUR",
+  baseCurrencyError: null,
 
   login: async (email, password) => {
     // F37 — isLoading is reset on FAILURE too. It was only cleared on the happy
@@ -51,7 +55,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: () => {
     localStorage.removeItem("token");
-    set({ user: null, token: null, baseCurrency: "EUR" });
+    set({ user: null, token: null, baseCurrency: "EUR", baseCurrencyError: null });
   },
 
   fetchMe: async () => {
@@ -64,7 +68,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setBaseCurrency: async (currency) => {
     // Optimistic local update
     const prev = get().baseCurrency;
-    set({ baseCurrency: currency });
+    set({ baseCurrency: currency, baseCurrencyError: null });
     const u = get().user;
     if (u) set({ user: { ...u, base_currency: currency } });
     try {
@@ -73,9 +77,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Refresh transactions so the new server-recomputed base_amount surfaces
       const { useTransactionStore } = await import("@/store/transactionStore");
       useTransactionStore.getState().fetch();
-    } catch {
-      // Roll back local state on failure
-      set({ baseCurrency: prev });
+    } catch (err) {
+      // Roll back local state on failure. F55 — and say why: the server refuses the change
+      // (503) when exchange rates are unavailable, and a silent snap-back looked like a glitch.
+      set({
+        baseCurrency: prev,
+        baseCurrencyError: apiErrorMessage(err, "Could not change your base currency — please try again."),
+      });
       const cur = get().user;
       if (cur) set({ user: { ...cur, base_currency: prev } });
     }

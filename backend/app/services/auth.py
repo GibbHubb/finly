@@ -69,32 +69,40 @@ def demo_login(db: Session) -> Token:
 
 def update_user(user: User, data: UserUpdate, db: Session) -> User:
     from app.services.rates_service import SUPPORTED_CURRENCIES
-    from app.services.transactions import recompute_all_base_amounts
+    from app.services.transactions import plan_base_amounts
 
-    if data.full_name is not None:
-        user.full_name = data.full_name
-
-    base_currency_changed = False
+    # Validate everything before changing anything.
+    new_base_currency = None
     if data.base_currency is not None:
         new_cur = data.base_currency.upper()
         if new_cur not in SUPPORTED_CURRENCIES:
             raise HTTPException(status_code=400, detail=f"Unsupported currency: {new_cur}")
         if new_cur != user.base_currency:
-            user.base_currency = new_cur
-            base_currency_changed = True
+            new_base_currency = new_cur
 
     if data.new_password is not None:
         if not data.current_password:
             raise HTTPException(status_code=400, detail="current_password is required to set a new password")
         if not verify_password(data.current_password, user.hashed_password):
             raise HTTPException(status_code=400, detail="Current password is incorrect")
-        user.hashed_password = hash_password(data.new_password)
 
+    # F55 — price every transaction in the new currency FIRST. This used to commit the new
+    # currency and only then recompute, so an FX outage left the currency changed, every
+    # converted base_amount NULLed, a 200 response, and no retry (re-selecting the same
+    # currency is a no-op). plan_base_amounts raises 503 before anything is written, and the
+    # whole request is refused — name and password included — so "nothing changed" is true.
+    planned = plan_base_amounts(user.id, new_base_currency, db) if new_base_currency else []
+
+    if data.full_name is not None:
+        user.full_name = data.full_name
+    if new_base_currency is not None:
+        user.base_currency = new_base_currency
+    if data.new_password is not None:
+        user.hashed_password = hash_password(data.new_password)
+    for tx, new_val in planned:
+        tx.base_amount = new_val
+
+    # One commit: the new currency and every re-priced row land together or not at all.
     db.commit()
     db.refresh(user)
-
-    # After commit, recompute base_amount for every transaction so totals make sense.
-    if base_currency_changed:
-        recompute_all_base_amounts(user.id, db)
-
     return user

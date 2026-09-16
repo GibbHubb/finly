@@ -10,7 +10,7 @@ from app.models.budget import Budget
 from app.models.tag import Tag, transaction_tags  # F29
 from app.models.user import User
 from app.schemas.transaction import TransactionCreate, TransactionUpdate, SplitChildIn
-from app.services.rates_service import convert_amount
+from app.services.rates_service import SUPPORTED_CURRENCIES, convert_amount
 
 
 # F25 — single chokepoint for "exclude transactions that have children".
@@ -64,12 +64,74 @@ def _user_base_currency(user_id: int, db: Session) -> str:
     return (user.base_currency if user else "EUR") or "EUR"
 
 
-def _compute_base_amount(tx: Transaction, base_currency: str, db: Session) -> Decimal | None:
-    """Best-effort conversion from tx.amount into the user's base currency."""
-    tx_currency = (tx.currency or "EUR").upper()
+def _base_amount_for(
+    amount: Decimal, currency: str | None, on_date: date, base_currency: str, db: Session,
+) -> Decimal | None:
+    """Best-effort conversion of `amount` into `base_currency`. Takes plain values, not a
+    Transaction, so a caller can price a change BEFORE applying it (F55)."""
+    tx_currency = (currency or "EUR").upper()
     if tx_currency == base_currency.upper():
-        return Decimal(tx.amount).quantize(Decimal("0.01"))
-    return convert_amount(Decimal(tx.amount), tx_currency, base_currency, tx.transaction_date, db)
+        return Decimal(amount).quantize(Decimal("0.01"))
+    return convert_amount(Decimal(amount), tx_currency, base_currency, on_date, db)
+
+
+# F55 — refuse, don't write NULL. Since F52 a failed FX lookup yields None instead of a fake
+# 1:1, and storing that None over a correct base_amount is unrecoverable (on a base-currency
+# change it wiped every converted row during an outage). Owner decision 2026-09-16: when rates
+# are unavailable, refuse the change and change nothing.
+FX_UNAVAILABLE_BASE_CHANGE = (
+    "Exchange rates are unavailable right now, so your base currency was not changed. "
+    "Try again later."
+)
+FX_UNAVAILABLE_SAVE = (
+    "Exchange rates are unavailable right now, so this transaction was not saved. "
+    "Try again later."
+)
+
+
+def _needs_rate(currency: str | None, base_currency: str) -> bool:
+    """True when converting needs an FX rate we could fail to get. A row already in the base
+    currency never does. A row in an unsupported currency never converts under ANY base, so
+    its base_amount is NULL before and after — refusing on it would block forever while
+    protecting nothing."""
+    cur = (currency or "EUR").upper()
+    return cur != base_currency.upper() and cur in SUPPORTED_CURRENCIES
+
+
+def _require_base_amount(
+    amount: Decimal, currency: str | None, on_date: date, base_currency: str, db: Session,
+    detail: str,
+) -> Decimal | None:
+    """F55 — the single-row guard: a conversion that needs a rate and got none is a 503."""
+    val = _base_amount_for(amount, currency, on_date, base_currency, db)
+    if val is None and _needs_rate(currency, base_currency):
+        db.rollback()
+        raise HTTPException(status_code=503, detail=detail)
+    return val
+
+
+def plan_base_amounts(
+    user_id: int, base_currency: str, db: Session,
+) -> list[tuple[Transaction, Decimal | None]]:
+    """F55 — price EVERY transaction of `user_id` in `base_currency` without writing anything.
+
+    Returns (tx, new_base_amount) pairs for the caller to apply and commit together with the
+    currency itself. If any row that needs a rate cannot get one, raises 503 and the caller
+    must not write — the reverted attempt that skipped failed rows left old-currency figures
+    relabelled as the new currency, which is worse than refusing.
+
+    Nothing is assigned to a Transaction here on purpose: a rate-cache miss commits the
+    session (`_persist_rates`), which would flush any half-applied change along with it.
+    """
+    txs = db.query(Transaction).filter(Transaction.user_id == user_id).all()
+    planned: list[tuple[Transaction, Decimal | None]] = []
+    for tx in txs:
+        new_val = _base_amount_for(tx.amount, tx.currency, tx.transaction_date, base_currency, db)
+        if new_val is None and _needs_rate(tx.currency, base_currency):
+            db.rollback()
+            raise HTTPException(status_code=503, detail=FX_UNAVAILABLE_BASE_CHANGE)
+        planned.append((tx, new_val))
+    return planned
 
 
 def create_transaction(data: TransactionCreate, user_id: int, db: Session) -> Transaction:
@@ -77,28 +139,17 @@ def create_transaction(data: TransactionCreate, user_id: int, db: Session) -> Tr
     payload = data.model_dump()
     if payload.get("currency") is None:
         payload["currency"] = base_currency
+    # F55 — price it before building the row; a needed rate that is missing refuses the save.
+    base_amount = _require_base_amount(
+        payload["amount"], payload["currency"], payload["transaction_date"], base_currency, db,
+        FX_UNAVAILABLE_SAVE,
+    )
     tx = Transaction(**payload, user_id=user_id)
-    tx.base_amount = _compute_base_amount(tx, base_currency, db)
+    tx.base_amount = base_amount
     db.add(tx)
     db.commit()
     db.refresh(tx)
     return tx
-
-
-def recompute_all_base_amounts(user_id: int, db: Session) -> int:
-    """Recompute base_amount for every transaction of `user_id` — called when
-    the user changes their base currency. Returns how many rows were updated."""
-    base_currency = _user_base_currency(user_id, db)
-    txs = db.query(Transaction).filter(Transaction.user_id == user_id).all()
-    updated = 0
-    for tx in txs:
-        new_val = _compute_base_amount(tx, base_currency, db)
-        if new_val != tx.base_amount:
-            tx.base_amount = new_val
-            updated += 1
-    if updated:
-        db.commit()
-    return updated
 
 
 def get_user_transactions(
@@ -262,10 +313,23 @@ def update_transaction(tx_id: int, user_id: int, data: TransactionUpdate, db: Se
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
     payload = data.model_dump(exclude_none=True)
+    # F55 — price the edited row BEFORE applying anything, and refuse the whole update if a
+    # needed rate is unavailable. Assigning first would leave the edit pending in a session
+    # that a rate-cache miss commits. `currency` belongs in the trigger set too: changing it
+    # without re-pricing left base_amount in the old currency's terms.
+    new_base_amount = tx.base_amount
+    if {"amount", "transaction_date", "currency"} & payload.keys():
+        new_base_amount = _require_base_amount(
+            payload.get("amount", tx.amount),
+            payload.get("currency", tx.currency),
+            payload.get("transaction_date", tx.transaction_date),
+            _user_base_currency(user_id, db),
+            db,
+            FX_UNAVAILABLE_SAVE,
+        )
     for field, value in payload.items():
         setattr(tx, field, value)
-    if {"amount", "transaction_date"} & payload.keys():
-        tx.base_amount = _compute_base_amount(tx, _user_base_currency(user_id, db), db)
+    tx.base_amount = new_base_amount
     db.commit()
     db.refresh(tx)
     return tx
@@ -309,8 +373,15 @@ def split_transaction(
         )
 
     base_currency = _user_base_currency(user_id, db)
+    # F55 — children share the parent's currency and date, so one guarded conversion per
+    # child is priced up front; a missing rate refuses the split before any row is added.
+    child_base_amounts = [
+        _require_base_amount(c.amount, parent.currency, parent.transaction_date, base_currency, db,
+                             FX_UNAVAILABLE_SAVE)
+        for c in children
+    ]
     created: list[Transaction] = []
-    for child_in in children:
+    for child_in, child_base in zip(children, child_base_amounts):
         child = Transaction(
             user_id=user_id,
             amount=child_in.amount,
@@ -324,7 +395,7 @@ def split_transaction(
             parent_transaction_id=parent.id,
             # import_hash stays unique to the parent row; children have none.
         )
-        child.base_amount = _compute_base_amount(child, base_currency, db)
+        child.base_amount = child_base
         db.add(child)
         created.append(child)
 
