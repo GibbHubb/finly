@@ -36,6 +36,23 @@ _FETCH_ERRORS = (httpx.HTTPError, ValueError, ArithmeticError, AttributeError, T
 # invisible to a green suite for two weeks).
 _CLIENT = httpx.Client(follow_redirects=True, timeout=5.0)
 
+
+def _get(url: str, params: dict) -> httpx.Response:
+    """GET with ONE retry on a transport error (F54).
+
+    `_CLIENT`'s keep-alive pool survives a Vercel freeze, so the first request after a thaw
+    can land on a socket the far end already closed: ConnectError / ReadError /
+    RemoteProtocolError. That is not the provider being down, and without a retry it left
+    the caller with no rate (a NULL base_amount, or a refused save since F55). A status
+    error (4xx/5xx) is NOT retried: the provider answered, and retrying doubles an outage.
+    """
+    try:
+        return _CLIENT.get(url, params=params)
+    except httpx.TransportError as exc:
+        logger.info("FX: transport error on first attempt, retrying once (%s): %s", url, exc)
+        return _CLIENT.get(url, params=params)
+
+
 _CACHE: dict[str, Any] = {}
 _CACHE_TTL = 3600  # seconds
 
@@ -67,7 +84,7 @@ def get_rates(base: str = "EUR") -> dict[str, float]:
     symbols = ",".join(c for c in SUPPORTED_CURRENCIES if c != base.upper())
     url = f"{FRANKFURTER_BASE}/latest"
     try:
-        resp = _CLIENT.get(url, params={"from": base.upper(), "to": symbols})
+        resp = _get(url, {"from": base.upper(), "to": symbols})
         resp.raise_for_status()
         data = resp.json()
         rates: dict[str, float] = {base.upper(): 1.0}
@@ -96,7 +113,7 @@ def _fetch_historical_eur_rates(d: date) -> dict[str, Decimal]:
     symbols = ",".join(c for c in SUPPORTED_CURRENCIES if c != "EUR")
     url = f"{FRANKFURTER_BASE}/{d.isoformat()}"
     try:
-        resp = _CLIENT.get(url, params={"from": "EUR", "to": symbols})
+        resp = _get(url, {"from": "EUR", "to": symbols})
         resp.raise_for_status()
         data = resp.json()
         out: dict[str, Decimal] = {"EUR": Decimal("1")}
