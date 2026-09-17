@@ -7,7 +7,6 @@ inserted via the same Transaction creation pattern.
 """
 from __future__ import annotations
 
-import hashlib
 from datetime import date as date_cls, datetime
 from decimal import Decimal
 from typing import Iterable
@@ -17,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.models.bank_connection import BankConnection
 from app.models.transaction import Category, Transaction, TransactionType
 from app.services.categorisation import match_description
+from app.services.import_service import find_existing_import
 from app.services import gocardless_service as gc
 from app.services.transactions import _base_amount_for, _needs_rate, _user_base_currency
 
@@ -24,9 +24,6 @@ from app.services.transactions import _base_amount_for, _needs_rate, _user_base_
 FX_UNAVAILABLE_SYNC = "Exchange rates are unavailable, so nothing was synced. It will retry automatically."
 
 
-def _make_hash(tx_date: date_cls, amount: Decimal, description: str) -> str:
-    raw = f"{tx_date.isoformat()}|{amount}|{description.strip().lower()}"
-    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def _normalise_tx(raw: dict) -> dict | None:
@@ -112,11 +109,10 @@ def sync_connection(conn: BankConnection, db: Session) -> dict:
         norm = _normalise_tx(raw)
         if not norm:
             continue
-        tx_hash = _make_hash(norm["transaction_date"], norm["amount"], norm["description"])
-        existing = (
-            db.query(Transaction)
-            .filter(Transaction.user_id == conn.user_id, Transaction.import_hash == tx_hash)
-            .first()
+        # F41 — the same per-user hash as CSV import (a bank row and a CSV row of the same
+        # payment dedupe against each other), legacy hash still matched.
+        tx_hash, existing = find_existing_import(
+            conn.user_id, norm["transaction_date"], norm["amount"], norm["description"], db,
         )
         if existing or tx_hash in seen_hashes:
             skipped += 1

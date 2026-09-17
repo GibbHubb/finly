@@ -17,6 +17,8 @@ import json
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
+from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.import_mapping import ImportMapping
@@ -56,9 +58,57 @@ def _parse_date_ddmmyyyy(value: str) -> date:
     return date(int(v[:4]), int(v[4:6]), int(v[6:8]))
 
 
-def _make_hash(tx_date: date, amount: Decimal, description: str) -> str:
+def _legacy_hash(tx_date: date, amount: Decimal, description: str) -> str:
+    """The pre-F41 hash: date|amount|description with no user. Still READ for dedup, because
+    rows imported before F41 carry it; never written any more."""
     raw = f"{tx_date.isoformat()}|{amount}|{description.strip().lower()}"
     return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _make_hash(user_id: int, tx_date: date, amount: Decimal, description: str) -> str:
+    """F41 — the import hash is per USER.
+
+    `transactions.import_hash` has a GLOBAL unique index, while every dedup lookup is scoped to
+    one user. With a user-less hash, the second person to import a row anyone else already had
+    (a 2.50 Albert Heijn) sailed past their own lookup and died on the index: a 500, and the
+    whole file lost. Putting the user into the value makes a cross-user collision impossible
+    under the index that already exists, so no schema migration and no backfill are needed.
+    """
+    raw = f"{user_id}|{tx_date.isoformat()}|{amount}|{description.strip().lower()}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def find_existing_import(user_id: int, tx_date: date, amount: Decimal, description: str, db: Session):
+    """(new hash, already-imported?) — matches both the per-user hash and the legacy one, so a
+    file imported before F41 still dedupes after it."""
+    new = _make_hash(user_id, tx_date, amount, description)
+    legacy = _legacy_hash(tx_date, amount, description)
+    exists = (
+        db.query(Transaction.id)
+        .filter(Transaction.user_id == user_id, Transaction.import_hash.in_([new, legacy]))
+        .first()
+    )
+    return new, exists is not None
+
+
+def commit_import(db: Session) -> None:
+    """Commit an import batch. A unique-index hit here means a concurrent request (a
+    double-clicked upload) inserted the same rows between our dedup check and this commit:
+    roll back and say so, instead of a 500 that loses the batch silently."""
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        # Only a clash on the import hash means "someone else imported these rows first". Any
+        # other constraint is a real fault: let it surface (and be logged) as one, rather than
+        # telling the user to retry something that will fail the same way.
+        if "import_hash" not in str(exc.orig):
+            raise
+        raise HTTPException(
+            status_code=409,
+            detail="Another import of the same rows finished first, so nothing was imported. "
+                   "Import the file again to add anything still missing.",
+        )
 
 
 def _infer_category(description: str) -> Category:
@@ -170,14 +220,8 @@ def import_csv(
 
         tx_date, amount, tx_type, description = parsed
 
-        import_hash = _make_hash(tx_date, amount, description)
-
-        # Dedup check
-        exists = (
-            db.query(Transaction.id)
-            .filter(Transaction.user_id == user_id, Transaction.import_hash == import_hash)
-            .first()
-        )
+        # Dedup check (F41: per-user hash, legacy hash still matched)
+        import_hash, exists = find_existing_import(user_id, tx_date, amount, description, db)
         # The same row twice in one file: autoflush is off, so the DB check above cannot see the
         # first copy, and both used to reach the unique index on import_hash and 500 the commit.
         if exists or import_hash in seen_hashes:
@@ -212,7 +256,7 @@ def import_csv(
 
     if imported > 0:
         db.add_all(pending)
-        db.commit()
+        commit_import(db)
         # F32: auto-tag recurring transactions after a successful import.
         # Wrapped so a detection failure never breaks the import result.
         try:
@@ -413,12 +457,7 @@ def commit_mapped_import(
         else:
             category = Category.salary if "salaris" in description.lower() else Category.other
 
-        import_hash = _make_hash(tx_date, amount, description)
-        exists = (
-            db.query(Transaction.id)
-            .filter(Transaction.user_id == user_id, Transaction.import_hash == import_hash)
-            .first()
-        )
+        import_hash, exists = find_existing_import(user_id, tx_date, amount, description, db)
         if exists or import_hash in seen_hashes:  # see import_csv: same row twice in one file
             skipped += 1
             continue
@@ -440,7 +479,7 @@ def commit_mapped_import(
 
     if imported > 0:
         db.add_all(pending)
-        db.commit()
+        commit_import(db)
         # F32: auto-tag recurring transactions after a successful import.
         # Wrapped so a detection failure never breaks the import result.
         try:
