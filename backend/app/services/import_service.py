@@ -23,7 +23,7 @@ from app.models.import_mapping import ImportMapping
 from app.models.transaction import Category, Transaction, TransactionType
 from app.models.user import User
 from app.services.categorisation import match_description
-from app.services.rates_service import convert_amount
+from app.services.transactions import FX_UNAVAILABLE_IMPORT, _require_base_amount
 
 # ING format: "Af" = expense, "Bij" = income
 _ING_REQUIRED = {"Datum", "Naam / Omschrijving", "Af Bij", "Bedrag (EUR)"}
@@ -112,9 +112,14 @@ def _user_base_currency(user_id: int, db: Session) -> str:
 
 
 def _compute_base_amount(amount: Decimal, tx_currency: str, base_currency: str, on_date: date, db: Session) -> Decimal | None:
-    if (tx_currency or "EUR").upper() == base_currency.upper():
-        return Decimal(amount).quantize(Decimal("0.01"))
-    return convert_amount(Decimal(amount), tx_currency, base_currency, on_date, db)
+    """F57 — price one imported row, refusing the WHOLE import (503) if a needed rate is missing.
+
+    Both import paths call this for every row BEFORE adding any row to the session, so a
+    refusal leaves nothing behind. That ordering matters twice over: a rate-cache miss commits
+    the session (`rates_service._persist_rates`), which would otherwise flush the rows added so
+    far into a half-import; and the old behaviour stored NULL for the failed row inside an
+    otherwise successful batch — the F56 problem, created fresh on every outage."""
+    return _require_base_amount(amount, tx_currency, on_date, base_currency, db, FX_UNAVAILABLE_IMPORT)
 
 
 def import_csv(
@@ -154,6 +159,8 @@ def import_csv(
     skipped = 0
     errors: list[str] = []
     base_currency = _user_base_currency(user_id, db)
+    pending: list[Transaction] = []  # F57 — added only once every row is priced
+    seen_hashes: set[str] = set()
 
     for i, row in enumerate(reader, start=2):  # start=2: row 1 is header
         parsed = _parse_ing_row(row) if fmt == "ing" else _parse_abn_row(row)
@@ -171,9 +178,12 @@ def import_csv(
             .filter(Transaction.user_id == user_id, Transaction.import_hash == import_hash)
             .first()
         )
-        if exists:
+        # The same row twice in one file: autoflush is off, so the DB check above cannot see the
+        # first copy, and both used to reach the unique index on import_hash and 500 the commit.
+        if exists or import_hash in seen_hashes:
             skipped += 1
             continue
+        seen_hashes.add(import_hash)
 
         rule_id: int | None = None
         if tx_type == TransactionType.expense:
@@ -197,10 +207,11 @@ def import_csv(
             categorised_by_rule_id=rule_id,
             base_amount=_compute_base_amount(amount, "EUR", base_currency, tx_date, db),
         )
-        db.add(tx)
+        pending.append(tx)
         imported += 1
 
     if imported > 0:
+        db.add_all(pending)
         db.commit()
         # F32: auto-tag recurring transactions after a successful import.
         # Wrapped so a detection failure never breaks the import result.
@@ -370,6 +381,8 @@ def commit_mapped_import(
     skipped = 0
     errors: list[str] = []
     base_currency = _user_base_currency(user_id, db)
+    pending: list[Transaction] = []  # F57 — added only once every row is priced
+    seen_hashes: set[str] = set()
 
     for i, raw_row in enumerate(reader, start=2):
         row = {(k.strip() if k else ""): (v or "") for k, v in raw_row.items()}
@@ -406,9 +419,10 @@ def commit_mapped_import(
             .filter(Transaction.user_id == user_id, Transaction.import_hash == import_hash)
             .first()
         )
-        if exists:
+        if exists or import_hash in seen_hashes:  # see import_csv: same row twice in one file
             skipped += 1
             continue
+        seen_hashes.add(import_hash)
 
         tx = Transaction(
             user_id=user_id,
@@ -421,10 +435,11 @@ def commit_mapped_import(
             categorised_by_rule_id=rule_id,
             base_amount=_compute_base_amount(amount, "EUR", base_currency, tx_date, db),
         )
-        db.add(tx)
+        pending.append(tx)
         imported += 1
 
     if imported > 0:
+        db.add_all(pending)
         db.commit()
         # F32: auto-tag recurring transactions after a successful import.
         # Wrapped so a detection failure never breaks the import result.

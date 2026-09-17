@@ -18,6 +18,10 @@ from app.models.bank_connection import BankConnection
 from app.models.transaction import Category, Transaction, TransactionType
 from app.services.categorisation import match_description
 from app.services import gocardless_service as gc
+from app.services.transactions import _base_amount_for, _needs_rate, _user_base_currency
+
+# F57 — a sync that cannot price a row stores nothing and retries on the next run.
+FX_UNAVAILABLE_SYNC = "Exchange rates are unavailable, so nothing was synced. It will retry automatically."
 
 
 def _make_hash(tx_date: date_cls, amount: Decimal, description: str) -> str:
@@ -101,6 +105,9 @@ def sync_connection(conn: BankConnection, db: Session) -> dict:
 
     inserted = 0
     skipped = 0
+    base_currency = _user_base_currency(conn.user_id, db)
+    pending: list[Transaction] = []
+    seen_hashes: set[str] = set()
     for raw in booked:
         norm = _normalise_tx(raw)
         if not norm:
@@ -111,9 +118,23 @@ def sync_connection(conn: BankConnection, db: Session) -> dict:
             .filter(Transaction.user_id == conn.user_id, Transaction.import_hash == tx_hash)
             .first()
         )
-        if existing:
+        if existing or tx_hash in seen_hashes:
             skipped += 1
             continue
+        seen_hashes.add(tx_hash)
+
+        # F57 — this path never set base_amount at all, so every synced row was stored NULL and
+        # read back as its raw foreign amount (F56). Price it now; if a needed rate is missing,
+        # add nothing for this connection and leave it to retry. Nothing has been added to the
+        # session yet, so a rate-cache commit inside the conversion cannot flush a partial sync.
+        base_amount = _base_amount_for(
+            norm["amount"], norm["currency"], norm["transaction_date"], base_currency, db,
+        )
+        if base_amount is None and _needs_rate(norm["currency"], base_currency):
+            # Status deliberately NOT flipped to "error": sync_all_active only picks up
+            # active/pending connections, so "error" would end the retries this promises.
+            conn.last_error = FX_UNAVAILABLE_SYNC
+            return {"inserted": 0, "skipped": skipped, "error": conn.last_error}
 
         # Rules first, then heuristic fallback (other).
         rule_match = match_description(norm["description"], conn.user_id, db)
@@ -130,10 +151,16 @@ def sync_connection(conn: BankConnection, db: Session) -> dict:
             currency=norm["currency"],
             import_hash=tx_hash,
             categorised_by_rule_id=rule_id,
+            base_amount=base_amount,
         )
-        db.add(tx)
+        pending.append(tx)
         inserted += 1
 
+    db.add_all(pending)
+    # Flush so the NEXT connection's dedup query in the same run sees these rows: autoflush is
+    # off, and two connections on one account (a reconnect) would otherwise both insert the same
+    # hash and fail sync_all_active's single commit for every user.
+    db.flush()
     conn.status = "active"
     conn.last_error = None
     conn.last_sync_at = datetime.utcnow()

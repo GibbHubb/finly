@@ -87,6 +87,12 @@ FX_UNAVAILABLE_SAVE = (
     "Exchange rates are unavailable right now, so this transaction was not saved. "
     "Try again later."
 )
+# F57 — imports follow the same rule: refuse the whole file, import nothing, so a retry after
+# the outage imports it cleanly (dedup makes a retry safe) and no row is stored unpriced.
+FX_UNAVAILABLE_IMPORT = (
+    "Exchange rates are unavailable right now, so nothing was imported. "
+    "Try the same file again later."
+)
 
 
 def _needs_rate(currency: str | None, base_currency: str) -> bool:
