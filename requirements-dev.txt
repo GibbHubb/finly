@@ -1,0 +1,25 @@
+# F43 — test and local-dev tools. NOT installed into the Vercel function.
+# CI and local development install this file; it pulls in the runtime list first.
+-r requirements.txt
+uvicorn[standard]==0.32.1
+pytest==8.3.4
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0
+factory-boy==3.3.1
+pytest-factoryboy==2.7.0
+
+# F34 — ONE dependency that was used but never declared.
+# (F43: moved here from requirements.txt — only the tests import it, the app does not.)
+#
+# `tests/test_trends.py` imports `dateutil`, which was installed here by
+# accident (something else pulls it in), so every local run passed while a
+# clean CI checkout could not even COLLECT the suite:
+# `ERROR tests/test_trends.py`, pytest exit code 2 — an interruption, which
+# says nothing about which import was missing.
+#
+# ⚠️ pydantic-settings and factory-boy are NOT added here: they were already
+# declared above, and my first pass added second, conflicting pins for both
+# because the scan compared the IMPORT name (`pydantic_settings`) against the
+# DISTRIBUTION name (`pydantic-settings`) without normalising. That broke
+# `pip install` outright — a worse failure than the one it was fixing.
+python-dateutil==2.9.0.post0

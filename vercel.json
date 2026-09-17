@@ -11,9 +11,9 @@
     },
     {
       "src": "backend/index.py",
-      "use": "@vercel/python@6.58.0",
+      "use": "@vercel/python",
       "config": {
-        "includeFiles": "**",
+        "includeFiles": "{app/**,alembic/**,alembic.ini}",
         "excludeFiles": "{frontend/**,**/node_modules/**,**/tests/**,**/.pytest_cache/**,**/*.db,**/coverage.xml,**/.coverage}"
       }
     }

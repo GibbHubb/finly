@@ -28,7 +28,7 @@ jobs:
 
       - name: Install backend deps
         working-directory: backend
-        run: pip install -r ../requirements.txt   # F34 - step runs in backend/
+        run: pip install -r ../requirements-dev.txt   # F43 - dev list (uvicorn) includes the runtime list
 
       - name: Install frontend deps
         run: npm ci
