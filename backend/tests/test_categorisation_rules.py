@@ -5,9 +5,9 @@ import json
 
 def _auth_headers(client, email="rules@finly.dev"):
     client.post("/api/v1/auth/register", json={
-        "email": email, "password": "pass123", "full_name": "Rules User",
+        "email": email, "password": "pass12345", "full_name": "Rules User",
     })
-    res = client.post("/api/v1/auth/login", data={"username": email, "password": "pass123"})
+    res = client.post("/api/v1/auth/login", data={"username": email, "password": "pass12345"})
     return {"Authorization": f"Bearer {res.json()['access_token']}"}
 
 

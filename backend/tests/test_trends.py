@@ -4,9 +4,9 @@ from dateutil.relativedelta import relativedelta
 
 def _auth_headers(client):
     client.post("/api/v1/auth/register", json={
-        "email": "trends@finly.dev", "password": "pass123", "full_name": "Trends User",
+        "email": "trends@finly.dev", "password": "pass12345", "full_name": "Trends User",
     })
-    res = client.post("/api/v1/auth/login", data={"username": "trends@finly.dev", "password": "pass123"})
+    res = client.post("/api/v1/auth/login", data={"username": "trends@finly.dev", "password": "pass12345"})
     return {"Authorization": f"Bearer {res.json()['access_token']}"}
 
 

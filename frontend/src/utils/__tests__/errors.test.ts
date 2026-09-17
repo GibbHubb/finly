@@ -18,8 +18,19 @@ describe("apiErrorMessage", () => {
     expect(apiErrorMessage(err, "fallback")).toBe("Request failed");
   });
 
-  it("ignores a non-string detail (FastAPI validation arrays)", () => {
-    const err = { response: { data: { detail: [{ msg: "field required" }] } } };
+  // F40 — a 422 carries a LIST of {loc, msg}. Showing the messages tells the user why their
+  // input was refused ("Limit must be greater than zero") instead of a generic fallback.
+  it("shows the messages of a FastAPI validation array", () => {
+    const err = { response: { data: { detail: [
+      { loc: ["body", "limit_amount"], msg: "Value error, Limit must be greater than zero" },
+      { loc: ["body", "year"], msg: "Value error, Year must be between 2000 and 2100" },
+    ] } } };
+    expect(apiErrorMessage(err, "fallback")).toBe(
+      "Limit must be greater than zero; Year must be between 2000 and 2100");
+  });
+
+  it("falls back when a validation array has no usable message", () => {
+    const err = { response: { data: { detail: [{ loc: ["body"] }, "junk", null] } } };
     expect(apiErrorMessage(err, "fallback")).toBe("fallback");
   });
 

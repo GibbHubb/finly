@@ -19,7 +19,7 @@ def test_register_and_login(client):
 
 
 def test_duplicate_email(client):
-    payload = {"email": "dupe@finly.dev", "password": "pass", "full_name": "Dupe"}
+    payload = {"email": "dupe@finly.dev", "password": "pass12345", "full_name": "Dupe"}
     client.post("/api/v1/auth/register", json=payload)
     res = client.post("/api/v1/auth/register", json=payload)
     assert res.status_code == 400

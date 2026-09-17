@@ -36,8 +36,8 @@ MAPPING = {"date_col": "Date", "amount_col": "Amount", "description_col": "Label
 
 
 def _user(client, base_currency):
-    client.post("/api/v1/auth/register", json={"email": EMAIL, "password": "pass123", "full_name": "F57"})
-    res = client.post("/api/v1/auth/login", data={"username": EMAIL, "password": "pass123"})
+    client.post("/api/v1/auth/register", json={"email": EMAIL, "password": "pass12345", "full_name": "F57"})
+    res = client.post("/api/v1/auth/login", data={"username": EMAIL, "password": "pass12345"})
     headers = {"Authorization": f"Bearer {res.json()['access_token']}"}
     if base_currency != "EUR":
         r = client.patch("/api/v1/auth/me", headers=headers, json={"base_currency": base_currency})

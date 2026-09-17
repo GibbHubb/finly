@@ -22,6 +22,15 @@ export function apiErrorMessage(err: unknown, fallback: string): string {
     const e = err as ApiErrorShape;
     const detail = e.response?.data?.detail;
     if (typeof detail === 'string' && detail.trim()) return detail;
+    // F40 — a 422 from FastAPI puts a LIST of {loc, msg} in detail. Show the messages rather
+    // than falling through to a generic fallback that hides why the input was refused.
+    if (Array.isArray(detail)) {
+      const msgs = detail
+        .map((d) => (typeof d === 'object' && d !== null ? (d as { msg?: unknown }).msg : undefined))
+        .filter((m): m is string => typeof m === 'string' && m.trim() !== '')
+        .map((m) => m.replace(/^Value error, /, ''));
+      if (msgs.length) return msgs.join('; ');
+    }
     if (typeof e.message === 'string' && e.message.trim()) return e.message;
   }
   return fallback;

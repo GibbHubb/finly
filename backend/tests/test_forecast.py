@@ -4,9 +4,9 @@ from datetime import date
 
 def _auth_headers(client):
     client.post("/api/v1/auth/register", json={
-        "email": "fc@finly.dev", "password": "pass123", "full_name": "FC User"
+        "email": "fc@finly.dev", "password": "pass12345", "full_name": "FC User"
     })
-    res = client.post("/api/v1/auth/login", data={"username": "fc@finly.dev", "password": "pass123"})
+    res = client.post("/api/v1/auth/login", data={"username": "fc@finly.dev", "password": "pass12345"})
     return {"Authorization": f"Bearer {res.json()['access_token']}"}
 
 

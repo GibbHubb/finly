@@ -1,10 +1,11 @@
 from datetime import datetime
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str
+    # F40 — "" was a valid password. 8 is a floor, not a strength policy.
+    password: str = Field(min_length=8)
     full_name: str
 
 
@@ -23,7 +24,8 @@ class UserUpdate(BaseModel):
     full_name: str | None = None
     base_currency: str | None = None
     current_password: str | None = None
-    new_password: str | None = None
+    # F40 — the same floor as registration; otherwise a password change could set "".
+    new_password: str | None = Field(default=None, min_length=8)
 
 
 class Token(BaseModel):

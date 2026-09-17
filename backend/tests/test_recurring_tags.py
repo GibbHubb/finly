@@ -190,9 +190,9 @@ class TestTagFilterable:
     def test_tagged_txs_visible_via_tag_filter(self, client):
         # Register + login (use .dev domain — .test is IANA-reserved and rejected by EmailStr)
         client.post("/api/v1/auth/register", json={
-            "email": "rec@finly.dev", "password": "pass123", "full_name": "Rec User"
+            "email": "rec@finly.dev", "password": "pass12345", "full_name": "Rec User"
         })
-        res = client.post("/api/v1/auth/login", data={"username": "rec@finly.dev", "password": "pass123"})
+        res = client.post("/api/v1/auth/login", data={"username": "rec@finly.dev", "password": "pass12345"})
         headers = {"Authorization": f"Bearer {res.json()['access_token']}"}
 
         # Create 3 monthly transactions via the API

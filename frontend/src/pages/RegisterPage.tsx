@@ -33,7 +33,7 @@ export default function RegisterPage() {
         <form onSubmit={handleSubmit}>
           <label>Name<input value={form.full_name} onChange={update("full_name")} required /></label>
           <label>Email<input type="email" value={form.email} onChange={update("email")} required /></label>
-          <label>Password<input type="password" value={form.password} onChange={update("password")} required /></label>
+          <label>Password<input type="password" value={form.password} onChange={update("password")} required minLength={8} /></label>
           <button type="submit">Create account</button>
         </form>
         <p>Already registered? <Link to="/login">Sign in</Link></p>

@@ -7,9 +7,9 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 def _auth_headers(client):
     client.post("/api/v1/auth/register", json={
-        "email": "imp@finly.dev", "password": "pass123", "full_name": "Imp User"
+        "email": "imp@finly.dev", "password": "pass12345", "full_name": "Imp User"
     })
-    res = client.post("/api/v1/auth/login", data={"username": "imp@finly.dev", "password": "pass123"})
+    res = client.post("/api/v1/auth/login", data={"username": "imp@finly.dev", "password": "pass12345"})
     return {"Authorization": f"Bearer {res.json()['access_token']}"}
 
 

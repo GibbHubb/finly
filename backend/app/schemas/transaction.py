@@ -41,6 +41,15 @@ class TransactionUpdate(BaseModel):
     transaction_date: date | None = None
     currency: str | None = None
 
+    # F40 — PATCH used to accept any amount, so a negative or zero value went straight into
+    # every SUM() in the app. Update now refuses exactly what create refuses.
+    @field_validator("amount")
+    @classmethod
+    def amount_must_be_positive(cls, v):
+        if v is None:
+            return v
+        return TransactionCreate.amount_must_be_positive(v)
+
     # F55 — a currency edit now re-prices the row, so it gets the same check as create:
     # an unsupported code would otherwise be stored with a base_amount of NULL.
     @field_validator("currency")

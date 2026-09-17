@@ -34,7 +34,7 @@ class UserFactory(_Base):
 
     email = factory.Sequence(lambda n: f"user{n}@finly.test")
     full_name = factory.Faker("name")
-    hashed_password = factory.LazyFunction(lambda: hash_password("pass123"))
+    hashed_password = factory.LazyFunction(lambda: hash_password("pass12345"))
     is_active = True
 
 

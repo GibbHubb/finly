@@ -52,9 +52,9 @@ def fx(monkeypatch):
 
 def _auth_headers(client, email="f55@finly.dev"):
     client.post("/api/v1/auth/register", json={
-        "email": email, "password": "pass123", "full_name": "FX Outage",
+        "email": email, "password": "pass12345", "full_name": "FX Outage",
     })
-    res = client.post("/api/v1/auth/login", data={"username": email, "password": "pass123"})
+    res = client.post("/api/v1/auth/login", data={"username": email, "password": "pass12345"})
     return {"Authorization": f"Bearer {res.json()['access_token']}"}
 
 

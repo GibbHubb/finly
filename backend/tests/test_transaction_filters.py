@@ -1,8 +1,8 @@
 def _auth_headers(client):
     client.post("/api/v1/auth/register", json={
-        "email": "filter@finly.dev", "password": "pass123", "full_name": "Filter User"
+        "email": "filter@finly.dev", "password": "pass12345", "full_name": "Filter User"
     })
-    res = client.post("/api/v1/auth/login", data={"username": "filter@finly.dev", "password": "pass123"})
+    res = client.post("/api/v1/auth/login", data={"username": "filter@finly.dev", "password": "pass12345"})
     return {"Authorization": f"Bearer {res.json()['access_token']}"}
 
 
