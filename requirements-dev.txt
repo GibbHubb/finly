@@ -7,6 +7,10 @@ pytest-asyncio==0.24.0
 pytest-cov==6.0.0
 factory-boy==3.3.1
 pytest-factoryboy==2.7.0
+# F50 — every CI run executes the suite in a random order (the seed is printed at the top of the run).
+# An order dependency then fails loudly with a reproducible seed instead of hiding behind
+# `-p no:randomly`. Reproduce locally with: pytest -p randomly --randomly-seed=<seed>
+pytest-randomly==3.16.0
 
 # F34 — ONE dependency that was used but never declared.
 # (F43: moved here from requirements.txt — only the tests import it, the app does not.)
