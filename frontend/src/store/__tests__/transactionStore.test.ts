@@ -210,3 +210,25 @@ describe("transactionStore.importCsv", () => {
     list.mockRestore();
   });
 });
+
+describe("F35 — budget alerts from write responses", () => {
+  it("an alert on the create response reaches the toast state, and dismiss removes it", async () => {
+    const alert = { event: "budget_alert" as const, category: "food", month: 3, year: 2026, spent: "110.00", limit: "100.00", overage: "10.00" };
+    vi.spyOn(transactionService, "create").mockResolvedValue({ ...sample, budget_alerts: [alert] });
+    useTransactionStore.setState({ transactions: [], budgetAlerts: [] });
+
+    await useTransactionStore.getState().add({ amount: 50, type: "expense", category: "food", description: "", transaction_date: "2026-03-05" } as never);
+
+    const [shown] = useTransactionStore.getState().budgetAlerts;
+    expect(shown).toMatchObject(alert);
+    useTransactionStore.getState().dismissBudgetAlert(shown!.clientId);
+    expect(useTransactionStore.getState().budgetAlerts).toEqual([]);
+  });
+
+  it("a create with no alerts adds none (control)", async () => {
+    vi.spyOn(transactionService, "create").mockResolvedValue({ ...sample, budget_alerts: [] });
+    useTransactionStore.setState({ transactions: [], budgetAlerts: [] });
+    await useTransactionStore.getState().add({ amount: 5, type: "expense", category: "food", description: "", transaction_date: "2026-03-05" } as never);
+    expect(useTransactionStore.getState().budgetAlerts).toEqual([]);
+  });
+});

@@ -77,6 +77,9 @@ class TransactionOut(BaseModel):
     created_at: datetime
     parent_transaction_id: int | None = None  # F25 — split child rows reference parent
     tags: list[TagBrief] = []  # F29
+    # F35/F53 — set only on the response to a write (create, edit, split) that pushed a category
+    # over its budget. Lists always carry [].
+    budget_alerts: list[dict] = []
 
     model_config = {"from_attributes": True}
 

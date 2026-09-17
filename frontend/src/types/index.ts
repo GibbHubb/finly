@@ -19,6 +19,18 @@ export interface Transaction {
   created_at: string;
   parent_transaction_id?: number | null;  // F25 — child rows of a split parent
   tags?: { id: number; name: string }[];  // F29
+  /** F35/F53 — present on the response to a write that pushed a category over its budget. */
+  budget_alerts?: BudgetAlert[];
+}
+
+export interface BudgetAlert {
+  event: "budget_alert";
+  category: string;
+  month: number;
+  year: number;
+  spent: string;
+  limit: string;
+  overage: string;
 }
 
 export type Category =

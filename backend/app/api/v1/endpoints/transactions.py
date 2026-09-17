@@ -159,8 +159,11 @@ async def add_transaction(
 ):
     """Create a new income or expense transaction."""
     from app.core.ws_manager import manager
-    from app.services.budget_alert_service import check_budget_overspend
+    from app.services.budget_alert_service import crossed_alerts, snapshot_spend, spend_key
 
+    # F35 — snapshot BEFORE the write, so the alert means "this pushed it over", not "is over".
+    before = (snapshot_spend(current_user.id, [spend_key(data.category, data.transaction_date)], db)
+              if data.type == TransactionType.expense else {})
     tx = create_transaction(data, current_user.id, db)
     await manager.broadcast({
         "event": "transaction_created",
@@ -177,18 +180,7 @@ async def add_transaction(
         },
     })
 
-    # Check if this transaction tips a budget over its limit
-    if data.type == TransactionType.expense:
-        alert = check_budget_overspend(
-            current_user.id,
-            data.category.value,
-            tx.transaction_date.month,
-            tx.transaction_date.year,
-            db,
-        )
-        if alert:
-            await manager.send_to_user(current_user.id, alert)
-
+    tx.budget_alerts = crossed_alerts(current_user.id, before, db)
     return tx
 
 
@@ -200,7 +192,20 @@ def edit_transaction(
     current_user: User = Depends(get_current_user),
 ):
     """Partially update an existing transaction."""
-    return update_transaction(tx_id, current_user.id, data, db)
+    # F53 — an edit can move spend INTO a category/month (new amount, category or date): snapshot
+    # both where the row was and where it will be, then alert on anything that crossed.
+    from app.services.budget_alert_service import crossed_alerts, snapshot_spend, spend_key
+    from app.models.transaction import Transaction
+
+    old = db.query(Transaction).filter(Transaction.id == tx_id, Transaction.user_id == current_user.id).first()
+    before = {}
+    if old is not None and old.type == TransactionType.expense:
+        keys = [spend_key(old.category, old.transaction_date),
+                spend_key(data.category or old.category, data.transaction_date or old.transaction_date)]
+        before = snapshot_spend(current_user.id, keys, db)
+    tx = update_transaction(tx_id, current_user.id, data, db)
+    tx.budget_alerts = crossed_alerts(current_user.id, before, db)
+    return tx
 
 
 @router.delete("/{tx_id}", status_code=204)
@@ -281,7 +286,19 @@ def split(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return split_transaction(tx_id, current_user.id, body.children, db)
+    # F53 — moving part of an expense into another category can push THAT category over.
+    from app.services.budget_alert_service import crossed_alerts, snapshot_spend, spend_key
+    from app.models.transaction import Transaction
+
+    parent = db.query(Transaction).filter(Transaction.id == tx_id, Transaction.user_id == current_user.id).first()
+    before = {}
+    if parent is not None:
+        keys = [spend_key(parent.category, parent.transaction_date)]
+        keys += [spend_key(c.category, parent.transaction_date) for c in body.children]
+        before = snapshot_spend(current_user.id, keys, db)
+    tx = split_transaction(tx_id, current_user.id, body.children, db)
+    tx.budget_alerts = crossed_alerts(current_user.id, before, db)
+    return tx
 
 
 @router.delete("/{tx_id}/split", response_model=TransactionOut)

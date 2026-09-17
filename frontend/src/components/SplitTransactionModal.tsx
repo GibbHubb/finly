@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { Transaction, Category } from "@/types";
 import { transactionService } from "@/services/transactions";
+import { useTransactionStore } from "@/store/transactionStore";
 import { apiErrorMessage } from "@/utils/errors";
 
 const CATEGORIES: Category[] = [
@@ -55,7 +56,7 @@ export default function SplitTransactionModal({ tx, onClose, onSplit }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await transactionService.split(
+      const updated = await transactionService.split(
         tx.id,
         rows.map((r) => ({
           amount: parseFloat(r.amount).toFixed(2),
@@ -63,6 +64,7 @@ export default function SplitTransactionModal({ tx, onClose, onSplit }: Props) {
           description: r.description || undefined,
         })),
       );
+      useTransactionStore.getState().pushBudgetAlerts(updated.budget_alerts); // F53
       onSplit();
       onClose();
     } catch (err: unknown) {

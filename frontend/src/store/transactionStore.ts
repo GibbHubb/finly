@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ForecastResult, ImportResult, RecurringItem, Transaction, TransactionCreate } from "@/types";
+import type { BudgetAlert, ForecastResult, ImportResult, RecurringItem, Transaction, TransactionCreate } from "@/types";
 import { transactionService } from "@/services/transactions";
 
 interface TransactionState {
@@ -19,7 +19,13 @@ interface TransactionState {
   fetchForecast: (month: number, year: number) => Promise<void>;
   fetchRecurring: () => Promise<void>;
   importCsv: (file: File) => Promise<ImportResult>;
+  /** F35 — alerts returned by writes this tab made; the dashboard shows them as toasts. */
+  budgetAlerts: (BudgetAlert & { clientId: number })[];
+  pushBudgetAlerts: (alerts: BudgetAlert[] | undefined) => void;
+  dismissBudgetAlert: (clientId: number) => void;
 }
+
+let alertSeq = 0;
 
 export const useTransactionStore = create<TransactionState>((set, get) => ({
   transactions: [],
@@ -29,6 +35,15 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
   forecastLoading: false,
   recurring: [],
   recurringLoading: false,
+  budgetAlerts: [],
+
+  pushBudgetAlerts: (alerts) => {
+    if (!alerts || !alerts.length) return;
+    // A stable id per toast, so dismissing one never shifts which toast the next click hits.
+    set({ budgetAlerts: [...get().budgetAlerts, ...alerts.map((a) => ({ ...a, clientId: ++alertSeq }))] });
+  },
+  dismissBudgetAlert: (clientId) =>
+    set({ budgetAlerts: get().budgetAlerts.filter((a) => a.clientId !== clientId) }),
 
   // F38 — this had no failure path at all. A rejected list request left
   // `isLoading` true forever, so the dashboard showed "Loading…" and €0.00
@@ -54,6 +69,7 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
   add: async (payload) => {
     const tx = await transactionService.create(payload);
     set({ transactions: [tx, ...get().transactions] });
+    get().pushBudgetAlerts(tx.budget_alerts);
   },
 
   remove: async (id) => {

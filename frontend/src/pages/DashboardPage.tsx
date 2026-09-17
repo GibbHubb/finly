@@ -76,19 +76,13 @@ export default function DashboardPage() {
     }
   };
 
-  // F34 — the budget-alert toast stack was here, fed exclusively by the
-  // WebSocket's `budget_alert` frame. With the socket gone there is no producer
-  // for it, so the state, the callback and the toast markup are removed rather
-  // than left as UI that can never appear. Restoring alerts needs a "what
-  // changed since I last asked" endpoint to poll — filed as F35. The budget
-  // bars below still show which categories are over.
-  // F34 — polling replaces the WebSocket, which cannot exist on serverless and
-  // had been dialling ws://localhost:8000 from the deployed SPA anyway.
-  // ⚠️ It does NOT deliver budget alerts: the socket pushed those and polling
-  // has nothing to poll for them (F35). `handleBudgetAlert` and the toast it
-  // feeds are kept, unwired, because the budget bars below still render the
-  // same state and the toast returns with F35.
+  // F35/F53 — budget alerts are back, from the write itself: create, edit and split responses
+  // carry `budget_alerts` when that write pushed a category over its budget. Alerts caused on
+  // ANOTHER device are not delivered (that needs stored events to poll; see F35's row).
+  // F34 — polling replaces the WebSocket, which cannot exist on serverless.
   useTransactionPolling();
+  const budgetAlerts = useTransactionStore((s) => s.budgetAlerts);
+  const dismissBudgetAlert = useTransactionStore((s) => s.dismissBudgetAlert);
 
   const now = new Date();
   const [form, setForm] = useState<TransactionCreate>({
@@ -381,6 +375,12 @@ export default function DashboardPage() {
           <input type="date" value={form.transaction_date} onChange={(e) => setForm((f) => ({ ...f, transaction_date: e.target.value }))} required />
           <button type="submit">Add</button>
           {addError && <div className="import-toast error">{addError}</div>}
+          {budgetAlerts.map((a) => (
+            <div key={a.clientId} className="import-toast error" role="alert" data-testid="budget-alert">
+              Over budget: {a.category} is €{a.spent} of €{a.limit} (€{a.overage} over).{" "}
+              <button type="button" onClick={() => dismissBudgetAlert(a.clientId)} aria-label={`Dismiss ${a.category} budget alert`}>×</button>
+            </div>
+          ))}
 
           {/* Import CSV */}
           <div className="import-section">
