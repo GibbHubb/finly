@@ -7,8 +7,9 @@ inserted via the same Transaction creation pattern.
 """
 from __future__ import annotations
 
+import logging
 from datetime import date as date_cls, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Iterable
 
 from sqlalchemy.orm import Session
@@ -19,6 +20,8 @@ from app.services.categorisation import match_description
 from app.services.import_service import find_existing_import
 from app.services import gocardless_service as gc
 from app.services.transactions import _base_amount_for, _needs_rate, _user_base_currency
+
+logger = logging.getLogger(__name__)
 
 # F57 — a sync that cannot price a row stores nothing and retries on the next run.
 FX_UNAVAILABLE_SYNC = "Exchange rates are unavailable, so nothing was synced. It will retry automatically."
@@ -35,7 +38,10 @@ def _normalise_tx(raw: dict) -> dict | None:
         return None
     try:
         amount = Decimal(str(raw_amount))
-    except Exception:
+    except (InvalidOperation, ValueError, TypeError):
+        # F51 — narrowed and reported: a row the bank sent with an unparseable amount is skipped,
+        # and that is now visible in the logs instead of a transaction silently not appearing.
+        logger.warning("bank sync: skipping a booked transaction with unparseable amount %r", raw_amount)
         return None
     # GoCardless gives signed amounts: negative = debit (expense).
     tx_type = TransactionType.expense if amount < 0 else TransactionType.income

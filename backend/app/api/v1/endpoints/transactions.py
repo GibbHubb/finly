@@ -262,7 +262,7 @@ async def import_commit(
     """
     try:
         payload = ImportMappingPayload.model_validate_json(mapping)
-    except Exception as exc:
+    except ValueError as exc:  # F51 — pydantic.ValidationError is a ValueError; nothing else belongs here
         raise HTTPException(status_code=422, detail=f"Invalid mapping JSON: {exc}")
 
     content = await file.read()

@@ -12,6 +12,7 @@ Also exposes a generic mapped-import path used by the column-mapping wizard
 """
 import csv
 import hashlib
+import logging
 import io
 import json
 from datetime import date, datetime
@@ -26,6 +27,8 @@ from app.models.transaction import Category, Transaction, TransactionType
 from app.models.user import User
 from app.services.categorisation import match_description
 from app.services.transactions import FX_UNAVAILABLE_IMPORT, _require_base_amount
+
+logger = logging.getLogger(__name__)
 
 # ING format: "Af" = expense, "Bij" = income
 _ING_REQUIRED = {"Datum", "Naam / Omschrijving", "Af Bij", "Bedrag (EUR)"}
@@ -196,7 +199,9 @@ def import_csv(
         reader = csv.DictReader(io.StringIO(text), dialect=sniffer_dialect or "excel", delimiter=delimiter)
         try:
             headers = reader.fieldnames or []
-        except Exception:
+        except (csv.Error, UnicodeError, ValueError):
+            # F51 — narrowed from `except Exception`: an unreadable header for THIS delimiter
+            # just means try the next one; anything else is a real fault and should surface.
             headers = []
 
         fmt = _detect_format(list(headers))
@@ -263,7 +268,12 @@ def import_csv(
             from app.services.recurring_service import apply_recurring_tags
             apply_recurring_tags(user_id, db)
         except Exception:
-            pass  # log is written inside apply_recurring_tags; import result is unaffected
+            # F51 — degrade (the import is already committed), but no longer silently: the old
+            # comment said the failure was logged inside apply_recurring_tags, which is not true
+            # of an exception that escapes it. Roll back so a failed statement cannot poison
+            # the session for whatever runs next in this request.
+            logger.exception("import: recurring-tag detection failed for user %s; import kept", user_id)
+            db.rollback()
 
     return {"imported": imported, "skipped_duplicates": skipped, "errors": errors}
 
@@ -486,7 +496,12 @@ def commit_mapped_import(
             from app.services.recurring_service import apply_recurring_tags
             apply_recurring_tags(user_id, db)
         except Exception:
-            pass  # apply_recurring_tags logs internally; import result is unaffected
+            # F51 — degrade (the import is already committed), but no longer silently: the old
+            # comment said the failure was logged inside apply_recurring_tags, which is not true
+            # of an exception that escapes it. Roll back so a failed statement cannot poison
+            # the session for whatever runs next in this request.
+            logger.exception("import: recurring-tag detection failed for user %s; import kept", user_id)
+            db.rollback()
 
     # Persist the mapping on first successful commit (or update existing)
     if imported > 0 or (skipped > 0 and not errors):
