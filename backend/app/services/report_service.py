@@ -11,16 +11,13 @@ from __future__ import annotations
 from decimal import Decimal
 from io import BytesIO
 
-from sqlalchemy import extract
+from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
 from app.models.budget import Budget  # noqa: F401 — keeps model registered
 from app.models.savings_goal import SavingsGoal
 from app.models.transaction import Transaction, TransactionType
-from app.services.transactions import (
-    _excluding_split_parents,
-    get_monthly_summary,
-)
+from app.services.transactions import _excluding_split_parents, expense_amount_expr
 
 
 # Lazy reportlab import so a missing reportlab doesn't crash app startup.
@@ -41,15 +38,29 @@ def _rl():
 
 
 def _year_totals(user_id: int, year: int, db: Session) -> dict:
-    """Reuse get_monthly_summary across 12 months — year total = sum of the
-    twelve monthly summaries (asserted by §3 acceptance)."""
-    months = [get_monthly_summary(user_id, m, year, db) for m in range(1, 13)]
-    income = sum((Decimal(m["total_income"]) for m in months), Decimal("0"))
-    expense = sum((Decimal(m["total_expenses"]) for m in months), Decimal("0"))
+    """Year totals in ONE grouped query (F44). This used to call get_monthly_summary for each of
+    the 12 months (25 statements per PDF). It sums the same expression over the same rows
+    (expense_amount_expr, split parents excluded), so the year equals the sum of its months."""
+    rows = (
+        _excluding_split_parents(
+            db.query(Transaction.category, Transaction.type, func.sum(expense_amount_expr()))
+            .filter(Transaction.user_id == user_id, extract("year", Transaction.transaction_date) == year),
+            user_id,
+        )
+        .group_by(Transaction.category, Transaction.type)
+        .all()
+    )
+    income = Decimal("0")
+    expense = Decimal("0")
     cat_totals: dict[str, Decimal] = {}
-    for m in months:
-        for c in m["categories"]:
-            cat_totals[c["category"]] = cat_totals.get(c["category"], Decimal("0")) + Decimal(c["expenses"])
+    for category, tx_type, total in rows:
+        amount = Decimal(str(total or 0))
+        cat = category.value if hasattr(category, "value") else str(category)
+        if tx_type in (TransactionType.income, "income"):
+            income += amount
+        elif tx_type in (TransactionType.expense, "expense"):
+            expense += amount
+            cat_totals[cat] = cat_totals.get(cat, Decimal("0")) + amount
     return {
         "income": income,
         "expenses": expense,
@@ -74,7 +85,7 @@ def _biggest_expense(user_id: int, year: int, db: Session) -> Transaction | None
         )
         .order_by(Transaction.amount.desc())
     )
-    q = _excluding_split_parents(q)
+    q = _excluding_split_parents(q, user_id)
     return q.first()
 
 

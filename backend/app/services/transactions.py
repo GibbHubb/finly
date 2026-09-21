@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import extract, func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from fastapi import HTTPException
 
 from app.models.transaction import Transaction, TransactionType
@@ -16,15 +16,21 @@ from app.services.rates_service import SUPPORTED_CURRENCIES, convert_amount
 # F25 — single chokepoint for "exclude transactions that have children".
 # Apply this to EVERY query that aggregates or lists transactions, so
 # parent+children are never double-counted. One subquery, reused.
-def _excluding_split_parents(q):
+def _excluding_split_parents(q, user_id: int | None = None):
     """Add a filter that drops any transaction whose id appears as a
-    `parent_transaction_id` on another row (i.e. it has children)."""
-    children_parent_ids = (
+    `parent_transaction_id` on another row (i.e. it has children).
+
+    F44 — pass `user_id`: the subquery then reads only that user's rows instead of every
+    user's split children (correct either way, since ids are global, but the unscoped
+    subquery grew with the whole table and ran inside every list, summary and report)."""
+    children = (
         Transaction.__table__.select()
         .with_only_columns(Transaction.parent_transaction_id)
         .where(Transaction.parent_transaction_id.isnot(None))
     )
-    return q.filter(Transaction.id.notin_(children_parent_ids))
+    if user_id is not None:
+        children = children.where(Transaction.user_id == user_id)
+    return q.filter(Transaction.id.notin_(children))
 
 
 # F39 — the ONE place "how much has this user spent in this category this month" is
@@ -55,7 +61,7 @@ def category_spend(
         extract("month", Transaction.transaction_date) == month,
         extract("year", Transaction.transaction_date) == year,
     )
-    spent = _excluding_split_parents(q).scalar()
+    spent = _excluding_split_parents(q, user_id).scalar()
     return Decimal(str(spent)) if spent is not None else Decimal("0")
 
 
@@ -66,13 +72,14 @@ def _user_base_currency(user_id: int, db: Session) -> str:
 
 def _base_amount_for(
     amount: Decimal, currency: str | None, on_date: date, base_currency: str, db: Session,
+    rate_memo: dict | None = None,
 ) -> Decimal | None:
     """Best-effort conversion of `amount` into `base_currency`. Takes plain values, not a
     Transaction, so a caller can price a change BEFORE applying it (F55)."""
     tx_currency = (currency or "EUR").upper()
     if tx_currency == base_currency.upper():
         return Decimal(amount).quantize(Decimal("0.01"))
-    return convert_amount(Decimal(amount), tx_currency, base_currency, on_date, db)
+    return convert_amount(Decimal(amount), tx_currency, base_currency, on_date, db, rate_memo=rate_memo)
 
 
 # F55 — refuse, don't write NULL. Since F52 a failed FX lookup yields None instead of a fake
@@ -131,8 +138,9 @@ def plan_base_amounts(
     """
     txs = db.query(Transaction).filter(Transaction.user_id == user_id).all()
     planned: list[tuple[Transaction, Decimal | None]] = []
+    rate_memo: dict = {}  # F44 — one rate lookup per distinct DATE, not per row
     for tx in txs:
-        new_val = _base_amount_for(tx.amount, tx.currency, tx.transaction_date, base_currency, db)
+        new_val = _base_amount_for(tx.amount, tx.currency, tx.transaction_date, base_currency, db, rate_memo)
         if new_val is None and _needs_rate(tx.currency, base_currency):
             db.rollback()
             raise HTTPException(status_code=503, detail=FX_UNAVAILABLE_BASE_CHANGE)
@@ -185,7 +193,10 @@ def get_user_transactions(
             .join(Tag, Tag.id == transaction_tags.c.tag_id)
             .filter(Tag.user_id == user_id, Tag.name == norm)
         )
-    q = _excluding_split_parents(q)  # F25 — don't double-count split parents
+    q = _excluding_split_parents(q, user_id)  # F25 — don't double-count split parents
+    # F44 — eager-load tags: TransactionOut serialises them, and the default lazy load issued one
+    # SELECT per row (102 statements for a 100-row page). selectinload makes it one more query.
+    q = q.options(selectinload(Transaction.tags))
     return q.order_by(Transaction.transaction_date.desc()).offset(skip).limit(limit).all()
 
 
@@ -208,7 +219,8 @@ def get_monthly_summary(user_id: int, month: int, year: int, db: Session) -> dic
                 # both dialects.
                 extract("month", Transaction.transaction_date) == month,
                 extract("year", Transaction.transaction_date) == year,
-            )
+            ),
+            user_id,
         )
         .group_by(Transaction.category, Transaction.type)
         .all()
@@ -289,7 +301,8 @@ def get_monthly_category_totals(user_id: int, months: int, db: Session) -> list[
                 Transaction.user_id == user_id,
                 Transaction.type == TransactionType.expense,
                 Transaction.transaction_date >= start,
-            )
+            ),
+            user_id,
         )
         .group_by(year_expr, month_num_expr, Transaction.category)
         .all()

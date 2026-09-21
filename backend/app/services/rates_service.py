@@ -165,6 +165,7 @@ def convert_amount(
     to_currency: str,
     on_date: date,
     db: Session,
+    rate_memo: dict | None = None,
 ) -> Decimal | None:
     """Convert `amount` from `from_currency` to `to_currency` on `on_date`.
 
@@ -178,7 +179,13 @@ def convert_amount(
     if src == dst:
         return amount.quantize(Decimal("0.01"))
 
-    rates = _ensure_rates_for_date(db, on_date)
+    # F44 — a caller converting many rows can pass `rate_memo` so each date is looked up once.
+    if rate_memo is not None:
+        if on_date not in rate_memo:
+            rate_memo[on_date] = _ensure_rates_for_date(db, on_date)
+        rates = rate_memo[on_date]
+    else:
+        rates = _ensure_rates_for_date(db, on_date)
     src_rate = rates.get(src)
     dst_rate = rates.get(dst)
     # F52 — no rate means NO NUMBER. The caller stores NULL, every reader coalesces to the
