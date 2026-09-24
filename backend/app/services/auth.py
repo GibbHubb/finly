@@ -1,13 +1,53 @@
+from datetime import datetime, timedelta
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 
-from app.core.security import decode_token, hash_password, verify_password, create_access_token
+from app.core.config import settings
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    hash_password,
+    hash_token,
+    new_jti,
+    verify_password,
+)
 from app.db.session import get_db
+from app.models.login_attempt import LoginAttempt
+from app.models.refresh_token import RefreshToken
 from app.models.user import User
-from app.schemas.user import UserCreate, UserUpdate, Token
+from app.schemas.user import Token, UserCreate, UserUpdate
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
+# F42 — the DB-backed login lockout: the 6th failed attempt for one email
+# inside the window is refused before a password comparison even runs.
+LOGIN_LOCKOUT_WINDOW = timedelta(seconds=60)
+LOGIN_LOCKOUT_THRESHOLD = 5  # this many prior failures -> the NEXT one is 429
+
+
+def _issue_token_pair(user_id: int, db: Session) -> Token:
+    """F42 — mint an access/refresh pair sharing one `jti` and store the
+    refresh token's revocation row. The row IS the session: revoking it
+    (logout, or reuse detection on refresh) kills both tokens at once,
+    because `get_current_user` checks the access token's `jti` against it.
+    """
+    jti = new_jti()
+    access_token = create_access_token(user_id, jti)
+    refresh_token = create_refresh_token(user_id, jti)
+
+    row = RefreshToken(
+        user_id=user_id,
+        jti=jti,
+        token_hash=hash_token(refresh_token),
+        expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+    )
+    db.add(row)
+    db.commit()
+    return Token(access_token=access_token, refresh_token=refresh_token)
 
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
@@ -18,12 +58,33 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     )
     try:
         payload = decode_token(token)
+        if payload.get("typ") != "access":
+            # F42 — a refresh token is a different capability (14 days,
+            # single-use) and must never be accepted where an access token
+            # is expected.
+            raise credentials_exception
         user_id = int(payload["sub"])
+        jti = payload["jti"]
     except (ValueError, KeyError):
         raise credentials_exception
 
-    user = db.get(User, user_id)
-    if not user or not user.is_active:
+    # F42 — the revocation check AND the user lookup in ONE query, not two.
+    # This runs on every authenticated request, and F44's query budget is a
+    # real constraint: two separate queries here pushed
+    # test_listing_100_tagged_transactions_is_not_n_plus_one from 3 to 4.
+    # The join gets both facts — "does this session still exist and is it
+    # revoked" and "who is the user" — in a single round trip, so the
+    # pre-F42 budget holds exactly.
+    row = (
+        db.query(User, RefreshToken.revoked_at)
+        .join(RefreshToken, RefreshToken.user_id == User.id)
+        .filter(User.id == user_id, RefreshToken.jti == jti)
+        .first()
+    )
+    if row is None:
+        raise credentials_exception
+    user, revoked_at = row
+    if revoked_at is not None or not user.is_active:
         raise credentials_exception
     return user
 
@@ -42,12 +103,35 @@ def register_user(data: UserCreate, db: Session) -> User:
     return user
 
 
-def login_user(email: str, password: str, db: Session) -> Token:
+def login_user(email: str, password: str, db: Session, now: datetime | None = None) -> Token:
+    """F42 — DB-backed lockout in front of the password check.
+
+    `now` is an injection point for the fixed-clock test, not a real caller
+    argument — production always mints it here from the wall clock.
+    """
+    now = now or datetime.utcnow()
+    window_start = now - LOGIN_LOCKOUT_WINDOW
+    recent_failures = (
+        db.query(LoginAttempt)
+        .filter(LoginAttempt.email == email, LoginAttempt.created_at >= window_start)
+        .count()
+    )
+    if recent_failures >= LOGIN_LOCKOUT_THRESHOLD:
+        # F42 — refused BEFORE the password is even checked: a correct 6th
+        # guess must not be rewarded with a login, or the lockout leaks
+        # whether the attacker just found the right password.
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed login attempts. Try again in a minute.",
+        )
+
     user = db.query(User).filter(User.email == email).first()
     if not user or not verify_password(password, user.hashed_password):
+        db.add(LoginAttempt(email=email, created_at=now))
+        db.commit()
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = create_access_token(user.id)
-    return Token(access_token=token)
+
+    return _issue_token_pair(user.id, db)
 
 
 def demo_login(db: Session) -> Token:
@@ -64,7 +148,91 @@ def demo_login(db: Session) -> Token:
     from app.services.demo_seed import seed_demo
 
     user = seed_demo(db)
-    return Token(access_token=create_access_token(user.id))
+    return _issue_token_pair(user.id, db)
+
+
+def refresh_session(refresh_token: str, db: Session) -> Token:
+    """F42 — rotate: consume the presented refresh token, mint a new pair.
+
+    Reuse detection: a refresh token whose row is ALREADY revoked has been
+    presented before (a replay of a stolen or previously-rotated token) —
+    the standard response is to revoke the rest of that user's active
+    sessions too, not just refuse this one request.
+
+    The "is it already revoked" check and the "consume it" write are ONE
+    atomic UPDATE, not a read-then-write (code-review catch). finly's own
+    architecture note in login_attempt.py is the reason this matters here
+    too: a Vercel deployment is many containers hitting the same database in
+    real parallel, not one process serialising requests. Two near-
+    simultaneous presentations of the same still-valid token — a genuine
+    thief racing the real client, or just a network retry — must not both
+    be able to read "not revoked yet" and both succeed; only the UPDATE
+    that actually flips `revoked_at` NULL -> now wins the row.
+    """
+    credentials_exception = HTTPException(status_code=401, detail="Invalid refresh token")
+    try:
+        payload = decode_token(refresh_token)
+        if payload.get("typ") != "refresh":
+            raise credentials_exception
+        user_id = int(payload["sub"])
+        jti = payload["jti"]
+    except (ValueError, KeyError):
+        raise credentials_exception
+
+    row = db.query(RefreshToken).filter(RefreshToken.jti == jti).first()
+    if row is None or row.token_hash != hash_token(refresh_token):
+        raise credentials_exception
+
+    if row.expires_at < datetime.utcnow():
+        raise credentials_exception
+
+    now = datetime.utcnow()
+    claim = db.execute(
+        sa_update(RefreshToken)
+        .where(RefreshToken.jti == jti, RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=now)
+    )
+    db.commit()
+
+    if claim.rowcount == 0:
+        # Lost the race (or a straightforward replay of an already-consumed
+        # token) — somebody else already claimed this row. Kill every other
+        # still-active session for this user: the token store may have been
+        # stolen, and reuse is the standard signal for that.
+        db.query(RefreshToken).filter(
+            RefreshToken.user_id == row.user_id,
+            RefreshToken.revoked_at.is_(None),
+        ).update({"revoked_at": now}, synchronize_session=False)
+        db.commit()
+        raise credentials_exception
+
+    new_pair = _issue_token_pair(user_id, db)
+    row.revoked_at = now  # keep the in-memory object consistent with the atomic UPDATE above
+    row.replaced_by = decode_token(new_pair.access_token)["jti"]
+    db.commit()
+    return new_pair
+
+
+def logout_session(refresh_token: str, db: Session) -> None:
+    """F42 — revoke the session the presented refresh token belongs to.
+
+    This kills the refresh token AND the access token minted alongside it
+    (they share `jti`), even though the access token's own `exp` has not
+    passed — that is the whole point of the revocation-row check in
+    `get_current_user`.
+    """
+    try:
+        payload = decode_token(refresh_token)
+        jti = payload["jti"]
+    except (ValueError, KeyError):
+        # An already-garbage token has nothing to revoke; logout is
+        # idempotent either way, so this is not an error the caller needs.
+        return
+
+    row = db.query(RefreshToken).filter(RefreshToken.jti == jti).first()
+    if row is not None and row.revoked_at is None:
+        row.revoked_at = datetime.utcnow()
+        db.commit()
 
 
 def update_user(user: User, data: UserUpdate, db: Session) -> User:

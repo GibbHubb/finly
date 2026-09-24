@@ -1,11 +1,16 @@
 import { create } from "zustand";
 import type { User } from "@/types";
 import { authService } from "@/services/auth";
+import { getAccessToken, getRefreshToken, setTokens, clearTokens } from "@/services/api";
 import { apiErrorMessage } from "@/utils/errors";
 
 interface AuthState {
   user: User | null;
   token: string | null;
+  /** F42 — the refresh token. api.ts's interceptor reads/writes localStorage
+   *  directly for the silent-refresh path; this copy is for the store's own
+   *  consumers (logout) and so `token`'s origin has a visible counterpart. */
+  refreshToken: string | null;
   isLoading: boolean;
   baseCurrency: string;
   /** F55 — why the last base-currency change was refused; null once one succeeds. */
@@ -19,7 +24,8 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
-  token: localStorage.getItem("token"),
+  token: getAccessToken(),
+  refreshToken: getRefreshToken(),
   isLoading: false,
   baseCurrency: "EUR",
   baseCurrencyError: null,
@@ -30,10 +36,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // in button disabled, reading "Signing in…" — you could not even retry.
     set({ isLoading: true });
     try {
-      const token = await authService.login(email, password);
-      localStorage.setItem("token", token);
+      const { accessToken, refreshToken } = await authService.login(email, password);
+      setTokens(accessToken, refreshToken);
       const user = await authService.me();
-      set({ token, user, isLoading: false, baseCurrency: user.base_currency ?? "EUR" });
+      set({ token: accessToken, refreshToken, user, isLoading: false, baseCurrency: user.base_currency ?? "EUR" });
     } catch (err) {
       set({ isLoading: false });
       throw err;
@@ -43,10 +49,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   demoLogin: async () => {
     set({ isLoading: true });
     try {
-      const token = await authService.demoLogin();
-      localStorage.setItem("token", token);
+      const { accessToken, refreshToken } = await authService.demoLogin();
+      setTokens(accessToken, refreshToken);
       const user = await authService.me();
-      set({ token, user, isLoading: false, baseCurrency: user.base_currency ?? "EUR" });
+      set({ token: accessToken, refreshToken, user, isLoading: false, baseCurrency: user.base_currency ?? "EUR" });
     } catch (err) {
       set({ isLoading: false });
       throw err;
@@ -54,12 +60,28 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: () => {
-    localStorage.removeItem("token");
-    set({ user: null, token: null, baseCurrency: "EUR", baseCurrencyError: null });
+    // F42 — read the refresh token from localStorage, NOT from `get().refreshToken`.
+    // api.ts's silent-refresh interceptor rotates the pair on a 401 and writes the
+    // new one straight to localStorage without touching this store (nothing in the
+    // app needs the store's copy live-updated for that). Any session that survived
+    // one silent refresh would otherwise have a STALE store value here — already
+    // revoked server-side — so this call would silently no-op and leave the real,
+    // still-live refresh token valid for up to REFRESH_TOKEN_EXPIRE_DAYS even
+    // though the UI shows the user signed out.
+    const refreshToken = getRefreshToken();
+    clearTokens();
+    set({ user: null, token: null, refreshToken: null, baseCurrency: "EUR", baseCurrencyError: null });
+    if (refreshToken) {
+      authService.logout(refreshToken).catch(() => {
+        // Best effort — the token is already gone from THIS client either
+        // way; a failed revoke just means it stays valid server-side until
+        // it expires on its own.
+      });
+    }
   },
 
   fetchMe: async () => {
-    const token = localStorage.getItem("token");
+    const token = getAccessToken();
     if (!token) return;
     const user = await authService.me();
     set({ user, baseCurrency: user.base_currency ?? "EUR" });

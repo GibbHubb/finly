@@ -30,8 +30,18 @@ class UserUpdate(BaseModel):
 
 class Token(BaseModel):
     access_token: str
+    # F42 — optional so the schema still serves any future access-token-only
+    # caller; every real login/refresh/demo-login response sets it.
+    refresh_token: str | None = None
     token_type: str = "bearer"
 
 
 class TokenData(BaseModel):
     user_id: int | None = None
+
+
+class RefreshRequest(BaseModel):
+    """F42 — the refresh token is submitted as a JSON body, like the token
+    it exchanges, not a header, so it never rides along on unrelated
+    authenticated requests the way a Bearer header would."""
+    refresh_token: str

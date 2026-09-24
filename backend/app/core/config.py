@@ -1,11 +1,20 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
+
+# F42 — the value nobody may ship. If SECRET_KEY is ever this string in a real
+# deployment, every token it signs is forgeable by anyone who has read the
+# (public) repo.
+_DEV_DEFAULT_SECRET = "dev-secret-change-in-prod"
 
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./finly.db"
-    SECRET_KEY: str = "dev-secret-change-in-prod"
+    SECRET_KEY: str = _DEV_DEFAULT_SECRET
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    # F42 — refresh tokens are the long-lived half of the pair; rotated on
+    # every /auth/refresh with reuse detection (services/auth.py).
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 14
     # E2E_MODE — when truthy, the /test/* utility endpoints are exposed.
     # Must be off in production. Set via env var E2E_MODE=1 for Playwright runs.
     E2E_MODE: bool = False
@@ -52,6 +61,30 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.BACKEND_CORS_ORIGINS.split(",") if o.strip()]
+
+    # F42 — fail at IMPORT, not at the first request. A serverless function
+    # that starts and then 500s per request is exactly the failure mode
+    # backend/index.py's import guard exists to surface; a config that lets
+    # the process boot at all with a forgeable signing key is worse, because
+    # /health (F34) only checks DB reachability — it has no idea SECRET_KEY
+    # is the public default, so it would report healthy the whole time.
+    #
+    # The one carve-out is local development: DATABASE_URL is SQLite only for
+    # a local checkout or the test suite (tests/conftest.py uses
+    # sqlite:///./test.db) — nobody should have to set a real secret to run
+    # `pytest`. Any non-SQLite DATABASE_URL is, by definition, a deployment
+    # talking to a real database, and that is exactly the case this guards.
+    @model_validator(mode="after")
+    def _secret_key_must_not_be_default_off_sqlite(self) -> "Settings":
+        is_local = self.DATABASE_URL.startswith("sqlite")
+        if not is_local and (not self.SECRET_KEY or self.SECRET_KEY == _DEV_DEFAULT_SECRET):
+            raise ValueError(
+                "SECRET_KEY is unset or is the development default "
+                f"({_DEV_DEFAULT_SECRET!r}) while DATABASE_URL points at a real "
+                "database. Set SECRET_KEY to a unique random value: "
+                'python -c "import secrets; print(secrets.token_hex(32))"'
+            )
+        return self
 
     class Config:
         env_file = ".env"

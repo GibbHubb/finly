@@ -16,6 +16,8 @@ import app.models.categorisation_rule # noqa: F401
 import app.models.fx_rate         # noqa: F401
 import app.models.bank_connection  # noqa: F401  — F27
 import app.models.tag               # noqa: F401  — F29
+import app.models.refresh_token     # noqa: F401  — F42
+import app.models.login_attempt     # noqa: F401  — F42
 
 # F48 — one JSON object per line, so a real run pipes through `jq`. This
 # REPLACES the root handlers rather than adding one: basicConfig's plain-text

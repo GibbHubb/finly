@@ -17,6 +17,8 @@ from app.models.budget import Budget
 from app.models.categorisation_rule import CategorisationRule
 from app.models.fx_rate import FxRate
 from app.models.import_mapping import ImportMapping
+from app.models.login_attempt import LoginAttempt
+from app.models.refresh_token import RefreshToken
 from app.models.savings_goal import SavingsGoal
 from app.models.transaction import Transaction
 from app.models.user import User
@@ -44,6 +46,11 @@ def reset_state(db: Session = Depends(get_db)):
     db.execute(delete(CategorisationRule))
     db.execute(delete(ImportMapping))
     db.execute(delete(FxRate))
+    # F42 — refresh_tokens FKs to users; without this a second /test/reset
+    # in the same run leaves orphaned rows on SQLite (no enforcement) and
+    # would raise a FK violation on Postgres (enforced).
+    db.execute(delete(RefreshToken))
+    db.execute(delete(LoginAttempt))
     db.execute(delete(User))
     db.commit()
 

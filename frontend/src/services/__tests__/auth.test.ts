@@ -32,17 +32,20 @@ describe("authService", () => {
 
   // The backend's token route is OAuth2 form-encoded, not JSON — a change to
   // that would be silent until a real sign-in failed.
-  it("login sends form fields named username/password and returns the token", async () => {
+  it("login sends form fields named username/password and returns the access+refresh pair", async () => {
     let username: string | null = null;
     server.use(
       http.post("*/api/v1/auth/login", async ({ request }) => {
         const form = await request.formData();
         username = form.get("username") as string;
-        return HttpResponse.json({ access_token: "jwt-abc" });
+        return HttpResponse.json({ access_token: "jwt-abc", refresh_token: "refresh-abc" });
       })
     );
 
-    await expect(authService.login("demo@finly.app", "pw")).resolves.toBe("jwt-abc");
+    await expect(authService.login("demo@finly.app", "pw")).resolves.toEqual({
+      accessToken: "jwt-abc",
+      refreshToken: "refresh-abc",
+    });
     expect(username).toBe("demo@finly.app");
   });
 
@@ -51,12 +54,29 @@ describe("authService", () => {
     server.use(
       http.post("*/api/v1/auth/demo-login", async ({ request }) => {
         hadBody = Boolean(await request.text());
-        return HttpResponse.json({ access_token: "demo-jwt" });
+        return HttpResponse.json({ access_token: "demo-jwt", refresh_token: "demo-refresh" });
       })
     );
 
-    await expect(authService.demoLogin()).resolves.toBe("demo-jwt");
+    await expect(authService.demoLogin()).resolves.toEqual({
+      accessToken: "demo-jwt",
+      refreshToken: "demo-refresh",
+    });
     expect(hadBody).toBe(false);
+  });
+
+  // F42
+  it("logout posts the refresh token to be revoked server-side", async () => {
+    let body: unknown;
+    server.use(
+      http.post("*/api/v1/auth/logout", async ({ request }) => {
+        body = await request.json();
+        return new HttpResponse(null, { status: 204 });
+      })
+    );
+
+    await expect(authService.logout("refresh-abc")).resolves.toBeUndefined();
+    expect(body).toEqual({ refresh_token: "refresh-abc" });
   });
 
   it("demoLogin rejects when the deployment has DEMO_MODE off (404)", async () => {

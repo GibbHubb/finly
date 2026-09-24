@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.session import get_db
-from app.schemas.user import Token, UserCreate, UserOut, UserUpdate
+from app.schemas.user import RefreshRequest, Token, UserCreate, UserOut, UserUpdate
 from app.services.auth import (
-    demo_login, get_current_user, login_user, register_user, update_user,
+    demo_login, get_current_user, login_user, logout_session, refresh_session,
+    register_user, update_user,
 )
 from app.models.user import User
 
@@ -23,6 +24,22 @@ def register(data: UserCreate, db: Session = Depends(get_db)):
 def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     """Authenticate and receive a JWT access token."""
     return login_user(form.username, form.password, db)
+
+
+@router.post("/refresh", response_model=Token)
+def refresh(data: RefreshRequest, db: Session = Depends(get_db)):
+    """F42 — exchange a refresh token for a new pair. One-time use: the
+    presented token is revoked as part of issuing the new one (rotation),
+    and replaying it is treated as a possible theft (the whole chain for
+    that user is revoked)."""
+    return refresh_session(data.refresh_token, db)
+
+
+@router.post("/logout", status_code=204, response_class=Response)
+def logout(data: RefreshRequest, db: Session = Depends(get_db)):
+    """F42 — revoke the session server-side. Idempotent: logging out twice,
+    or with an already-expired/garbage token, is not an error."""
+    logout_session(data.refresh_token, db)
 
 
 @router.post("/demo-login", response_model=Token)
