@@ -98,6 +98,7 @@ export default function RulesPage() {
         <button onClick={logout} className="btn-ghost">Sign out</button>
       </header>
 
+      <main>
       <h2 style={{ fontFamily: "var(--font-head)", margin: "1.5rem 0 0.5rem" }}>Auto-assign rules</h2>
       <p style={{ color: "var(--muted)", marginBottom: "1rem", fontSize: "0.9rem" }}>
         When a transaction description matches a rule, its category is auto-assigned on import.
@@ -105,7 +106,7 @@ export default function RulesPage() {
         uncategorised transactions.
       </p>
 
-      {error && <div className="import-toast error">{error}</div>}
+      {error && <div className="import-toast error" role="alert">{error}</div>}
       {applyResult !== null && (
         <div className={`import-toast ${applyResult > 0 ? "success" : "neutral"}`}>
           ✓ {applyResult} transaction{applyResult === 1 ? "" : "s"} re-categorised
@@ -115,9 +116,10 @@ export default function RulesPage() {
       <form className="chart-card" onSubmit={handleCreate}>
         <h3>New rule</h3>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem" }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }} htmlFor="rule-match-type">
             Match type
             <select
+              id="rule-match-type"
               value={form.match_type}
               onChange={(e) => setForm((f) => ({ ...f, match_type: e.target.value as MatchType }))}
               className="tx-filter-input"
@@ -125,9 +127,10 @@ export default function RulesPage() {
               {MATCH_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }} htmlFor="rule-match-value">
             Match value
             <input
+              id="rule-match-value"
               placeholder="e.g. Albert Heijn"
               value={form.match_value}
               onChange={(e) => setForm((f) => ({ ...f, match_value: e.target.value }))}
@@ -135,9 +138,10 @@ export default function RulesPage() {
               required
             />
           </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }} htmlFor="rule-category">
             Category
             <select
+              id="rule-category"
               value={form.category}
               onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as Category }))}
               className="tx-filter-input"
@@ -145,9 +149,10 @@ export default function RulesPage() {
               {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }} htmlFor="rule-priority">
             Priority
             <input
+              id="rule-priority"
               type="number"
               min={1}
               value={form.priority ?? 100}
@@ -207,6 +212,7 @@ export default function RulesPage() {
           </table>
         )}
       </div>
+      </main>
     </div>
   );
 }

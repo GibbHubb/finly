@@ -35,13 +35,13 @@ export default function LoginPage() {
 
   return (
     <div className="auth-page">
-      <div className="auth-card">
+      <main className="auth-card">
         <h1>💸 Finly</h1>
         <h2>Sign in</h2>
-        {error && <p className="error">{error}</p>}
+        {error && <p className="error" role="alert">{error}</p>}
         <form onSubmit={handleSubmit}>
-          <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
-          <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
+          <label htmlFor="login-email">Email<input id="login-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
+          <label htmlFor="login-password">Password<input id="login-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
           <button type="submit" disabled={isLoading}>{isLoading ? "Signing in…" : "Sign in"}</button>
         </form>
 
@@ -61,7 +61,7 @@ export default function LoginPage() {
         </p>
 
         <p>No account? <Link to="/register">Register</Link></p>
-      </div>
+      </main>
     </div>
   );
 }

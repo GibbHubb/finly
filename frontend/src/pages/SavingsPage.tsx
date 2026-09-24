@@ -51,6 +51,7 @@ export default function SavingsPage() {
         </nav>
       </header>
 
+      <main>
       <h2 style={{ fontFamily: "var(--font-head)", margin: "1.5rem 0 1rem" }}>Savings Goals</h2>
 
       {isLoading ? (
@@ -101,6 +102,7 @@ export default function SavingsPage() {
                     type="number"
                     step="0.01"
                     placeholder="Amount"
+                    aria-label={`Amount to add or withdraw for ${g.name}`}
                     value={addAmountInputs[g.id] ?? ""}
                     onChange={(e) => setAddAmountInputs((prev) => ({ ...prev, [g.id]: e.target.value }))}
                     style={{ ...inputStyle, width: "110px" }}
@@ -140,9 +142,10 @@ export default function SavingsPage() {
       <div style={cardStyle}>
         <h3 style={{ marginBottom: "1rem", fontFamily: "var(--font-head)" }}>New savings goal</h3>
         <form onSubmit={handleCreate} style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "flex-end" }}>
-          <label style={labelStyle}>
+          <label style={labelStyle} htmlFor="savings-name">
             Name
             <input
+              id="savings-name"
               type="text"
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
@@ -150,9 +153,10 @@ export default function SavingsPage() {
               placeholder="Holiday fund"
             />
           </label>
-          <label style={labelStyle}>
+          <label style={labelStyle} htmlFor="savings-target">
             Target (€)
             <input
+              id="savings-target"
               type="number"
               min="0.01"
               step="0.01"
@@ -162,9 +166,10 @@ export default function SavingsPage() {
               placeholder="1500.00"
             />
           </label>
-          <label style={labelStyle}>
+          <label style={labelStyle} htmlFor="savings-deadline">
             Deadline
             <input
+              id="savings-deadline"
               type="date"
               value={form.deadline || ""}
               onChange={(e) => setForm((f) => ({ ...f, deadline: e.target.value }))}
@@ -173,8 +178,9 @@ export default function SavingsPage() {
           </label>
           <button type="submit" style={btnStyle}>Create goal</button>
         </form>
-        {formError && <p style={{ color: "var(--expense)", marginTop: "0.5rem", fontSize: "0.85rem" }}>{formError}</p>}
+        {formError && <p role="alert" style={{ color: "var(--expense)", marginTop: "0.5rem", fontSize: "0.85rem" }}>{formError}</p>}
       </div>
+      </main>
     </div>
   );
 }

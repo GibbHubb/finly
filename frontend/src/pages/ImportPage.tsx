@@ -87,6 +87,7 @@ export default function ImportPage() {
 
   const picker = (label: keyof ImportMappingPayload, optional = false) => (
     <select
+      id={`import-${label}`}
       value={(mapping[label] as string) ?? ""}
       onChange={(e) => setMapping((m) => ({ ...m, [label]: e.target.value || (optional ? null : "") }))}
       className="tx-filter-input"
@@ -111,6 +112,7 @@ export default function ImportPage() {
         <button onClick={logout} className="btn-ghost">Sign out</button>
       </header>
 
+      <main>
       <h2 style={{ fontFamily: "var(--font-head)", margin: "1.5rem 0 0.5rem" }}>Custom CSV import</h2>
       <p style={{ color: "var(--muted)", marginBottom: "1.5rem", fontSize: "0.9rem" }}>
         Upload any bank CSV, map the columns once, and we'll remember the mapping next time.
@@ -136,13 +138,14 @@ export default function ImportPage() {
         })}
       </ol>
 
-      {error && <div className="import-toast error">{error}</div>}
+      {error && <div className="import-toast error" role="alert">{error}</div>}
 
       {step === "upload" && (
         <div className="chart-card">
           <h3>Pick a CSV file</h3>
           <input
             type="file"
+            aria-label="Pick a CSV file"
             accept=".csv,text/csv"
             disabled={busy}
             onChange={(e) => {
@@ -163,13 +166,14 @@ export default function ImportPage() {
               {preview.saved_mapping && " · pre-filled from your previous import"}
             </p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.75rem" }}>
-              <label style={labelStyle}>Date <span style={reqStyle}>*</span>{picker("date_col")}</label>
-              <label style={labelStyle}>Amount <span style={reqStyle}>*</span>{picker("amount_col")}</label>
-              <label style={labelStyle}>Description <span style={reqStyle}>*</span>{picker("description_col")}</label>
-              <label style={labelStyle}>Category (optional){picker("category_col", true)}</label>
-              <label style={labelStyle}>
+              <label style={labelStyle} htmlFor="import-date_col">Date <span style={reqStyle}>*</span>{picker("date_col")}</label>
+              <label style={labelStyle} htmlFor="import-amount_col">Amount <span style={reqStyle}>*</span>{picker("amount_col")}</label>
+              <label style={labelStyle} htmlFor="import-description_col">Description <span style={reqStyle}>*</span>{picker("description_col")}</label>
+              <label style={labelStyle} htmlFor="import-category_col">Category (optional){picker("category_col", true)}</label>
+              <label style={labelStyle} htmlFor="import-date-format">
                 Date format <span style={reqStyle}>*</span>
                 <select
+                  id="import-date-format"
                   value={mapping.date_format}
                   onChange={(e) => setMapping((m) => ({ ...m, date_format: e.target.value as DateFormatKey }))}
                   className="tx-filter-input"
@@ -177,9 +181,10 @@ export default function ImportPage() {
                   {DATE_FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}
                 </select>
               </label>
-              <label style={labelStyle}>
+              <label style={labelStyle} htmlFor="import-decimal-format">
                 Decimal format <span style={reqStyle}>*</span>
                 <select
+                  id="import-decimal-format"
                   value={mapping.decimal_format}
                   onChange={(e) => setMapping((m) => ({ ...m, decimal_format: e.target.value as DecimalFormat }))}
                   className="tx-filter-input"
@@ -243,6 +248,7 @@ export default function ImportPage() {
           </div>
         </div>
       )}
+      </main>
     </div>
   );
 }

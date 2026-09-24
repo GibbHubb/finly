@@ -75,11 +75,13 @@ export default function BudgetsPage() {
         </nav>
       </header>
 
+      <main>
       <h2 style={{ fontFamily: "var(--font-head)", margin: "1.5rem 0 1rem" }}>Budgets</h2>
 
       {/* Month/year selector */}
       <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1.5rem", alignItems: "center" }}>
         <select
+          aria-label="Month"
           value={month}
           onChange={(e) => setMonth(Number(e.target.value))}
           style={selectStyle}
@@ -89,6 +91,7 @@ export default function BudgetsPage() {
           ))}
         </select>
         <select
+          aria-label="Year"
           value={year}
           onChange={(e) => setYear(Number(e.target.value))}
           style={selectStyle}
@@ -104,7 +107,7 @@ export default function BudgetsPage() {
         <p style={{ color: "var(--muted)" }}>Loading…</p>
       ) : budgetError ? (
         /* F38 — a failed load used to be indistinguishable from "no budgets set". */
-        <p className="budget-error" style={{ color: "var(--expense)", marginBottom: "1.5rem" }}>
+        <p className="budget-error" role="alert" style={{ color: "var(--expense)", marginBottom: "1.5rem" }}>
           {budgetError}
         </p>
       ) : categoriesWithBudget.length === 0 ? (
@@ -164,9 +167,10 @@ export default function BudgetsPage() {
       <div style={cardStyle}>
         <h3 style={{ marginBottom: "1rem", fontFamily: "var(--font-head)" }}>Set a budget</h3>
         <form onSubmit={handleAdd} style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "flex-end" }}>
-          <label style={labelStyle}>
+          <label style={labelStyle} htmlFor="budget-category">
             Category
             <select
+              id="budget-category"
               value={form.category}
               onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as Category }))}
               style={selectStyle}
@@ -176,9 +180,10 @@ export default function BudgetsPage() {
               ))}
             </select>
           </label>
-          <label style={labelStyle}>
+          <label style={labelStyle} htmlFor="budget-limit">
             Limit (€)
             <input
+              id="budget-limit"
               type="number"
               min="0.01"
               step="0.01"
@@ -190,8 +195,9 @@ export default function BudgetsPage() {
           </label>
           <button type="submit" style={btnStyle}>Add budget</button>
         </form>
-        {formError && <p style={{ color: "var(--expense)", marginTop: "0.5rem", fontSize: "0.85rem" }}>{formError}</p>}
+        {formError && <p role="alert" style={{ color: "var(--expense)", marginTop: "0.5rem", fontSize: "0.85rem" }}>{formError}</p>}
       </div>
+      </main>
     </div>
   );
 }

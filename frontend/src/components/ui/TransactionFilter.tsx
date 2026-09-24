@@ -55,12 +55,14 @@ export default function TransactionFilter({
       <input
         type="text"
         placeholder="🔍 Search description or category..."
+        aria-label="Search description or category"
         value={filterText}
         onChange={(e) => setFilterText(e.target.value)}
         className="tx-filter-search"
       />
       <div className="tx-filter-row">
         <select
+          aria-label="Filter by category"
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value as Category | "all")}
           className="tx-filter-input"
@@ -74,6 +76,7 @@ export default function TransactionFilter({
           onChange={(e) => setFilterDateFrom(e.target.value)}
           className="tx-filter-input"
           title="From"
+          aria-label="From date"
         />
         <input
           type="date"
@@ -81,10 +84,12 @@ export default function TransactionFilter({
           onChange={(e) => setFilterDateTo(e.target.value)}
           className="tx-filter-input"
           title="To"
+          aria-label="To date"
         />
         <input
           type="number"
           placeholder="Min €"
+          aria-label="Minimum amount (€)"
           value={filterAmountMin}
           onChange={(e) => setFilterAmountMin(e.target.value)}
           className="tx-filter-input tx-filter-num"
@@ -93,6 +98,7 @@ export default function TransactionFilter({
         <input
           type="number"
           placeholder="Max €"
+          aria-label="Maximum amount (€)"
           value={filterAmountMax}
           onChange={(e) => setFilterAmountMax(e.target.value)}
           className="tx-filter-input tx-filter-num"
@@ -112,6 +118,7 @@ export default function TransactionFilter({
               <button
                 key={tag.id}
                 type="button"
+                aria-pressed={isSelected}
                 onClick={() => onToggleTag(tag.name)}
                 className={isSelected ? "tx-tag-chip tx-tag-chip--selected" : "tx-tag-chip"}
                 title={isSelected ? "Click to deselect tag filter" : "Click to filter by this tag"}

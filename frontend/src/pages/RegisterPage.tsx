@@ -26,18 +26,18 @@ export default function RegisterPage() {
 
   return (
     <div className="auth-page">
-      <div className="auth-card">
+      <main className="auth-card">
         <h1>💸 Finly</h1>
         <h2>Create account</h2>
-        {error && <p className="error">{error}</p>}
+        {error && <p className="error" role="alert">{error}</p>}
         <form onSubmit={handleSubmit}>
-          <label>Name<input value={form.full_name} onChange={update("full_name")} required /></label>
-          <label>Email<input type="email" value={form.email} onChange={update("email")} required /></label>
-          <label>Password<input type="password" value={form.password} onChange={update("password")} required minLength={8} /></label>
+          <label htmlFor="register-name">Name<input id="register-name" value={form.full_name} onChange={update("full_name")} required /></label>
+          <label htmlFor="register-email">Email<input id="register-email" type="email" value={form.email} onChange={update("email")} required /></label>
+          <label htmlFor="register-password">Password<input id="register-password" type="password" value={form.password} onChange={update("password")} required minLength={8} /></label>
           <button type="submit">Create account</button>
         </form>
         <p>Already registered? <Link to="/login">Sign in</Link></p>
-      </div>
+      </main>
     </div>
   );
 }

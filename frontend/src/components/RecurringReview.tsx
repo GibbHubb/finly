@@ -63,7 +63,7 @@ export default function RecurringReview() {
         won&apos;t be tagged again.
       </p>
 
-      {error && <p className="rr-error">{error}</p>}
+      {error && <p className="rr-error" role="alert">{error}</p>}
 
       <div className="rr-list">
         {groups.map((g) => (
@@ -83,6 +83,7 @@ export default function RecurringReview() {
               <button
                 type="button"
                 className="rr-confirm"
+                aria-label={`Confirm ${g.merchant} as recurring`}
                 disabled={busy === g.merchant}
                 onClick={() => resolve(g.merchant, "confirm")}
               >
@@ -91,6 +92,7 @@ export default function RecurringReview() {
               <button
                 type="button"
                 className="rr-reject"
+                aria-label={`Mark ${g.merchant} as not recurring`}
                 disabled={busy === g.merchant}
                 onClick={() => resolve(g.merchant, "reject")}
               >

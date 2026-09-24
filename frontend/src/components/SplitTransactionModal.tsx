@@ -1,6 +1,9 @@
 // F25 — split a transaction into >=2 child rows that sum exactly to the
 // parent. v1: simple modal with N rows; live remainder + exact-sum gate.
-import { useMemo, useState } from "react";
+// F46 — dialog semantics (role, focus trap, Escape, focus restore) and an
+// integer-cent remainder so the client gate matches the server's exact-cent
+// Decimal equality (services/transactions.py) instead of a float tolerance.
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Transaction, Category } from "@/types";
 import { transactionService } from "@/services/transactions";
 import { useTransactionStore } from "@/store/transactionStore";
@@ -23,8 +26,23 @@ interface Props {
   onSplit: () => void;  // parent refetches transactions
 }
 
+// F46 — round to whole cents the same way the value is actually submitted
+// (`.toFixed(2)`), so the client-side gate cannot pass on a discrepancy the
+// server then rejects. Summing floats first and rounding once at the end
+// (the old `Math.round((parentAmount - childSum) * 100) / 100`) let a
+// sub-cent-per-row drift slip through as "0.00" while the per-row values
+// actually submitted did not sum to the parent.
+const toCents = (v: string): number => Math.round((parseFloat(v) || 0) * 100);
+
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), ' +
+  'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+const MODAL_TITLE_ID = "split-modal-title";
+
 export default function SplitTransactionModal({ tx, onClose, onSplit }: Props) {
   const parentAmount = parseFloat(tx.amount);
+  const parentCents = Math.round(parentAmount * 100);
   const [rows, setRows] = useState<ChildRow[]>([
     { amount: "", category: tx.category, description: "" },
     { amount: "", category: tx.category, description: "" },
@@ -32,15 +50,68 @@ export default function SplitTransactionModal({ tx, onClose, onSplit }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const childSum = useMemo(
-    () => rows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0),
+  const modalRef = useRef<HTMLDivElement>(null);
+  const firstInputRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<Element | null>(null);
+  // F46 — always-current ref so the mount-only effect below can call the
+  // latest `onClose` without re-running (and re-yanking focus) on every
+  // parent re-render.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  const childCents = useMemo(
+    () => rows.reduce((s, r) => s + toCents(r.amount), 0),
     [rows],
   );
-  const remainder = Math.round((parentAmount - childSum) * 100) / 100;
+  const remainderCents = parentCents - childCents;
+  const remainder = remainderCents / 100;
   const canSubmit =
     rows.length >= 2 &&
-    rows.every((r) => parseFloat(r.amount) > 0) &&
-    Math.abs(remainder) < 0.005;
+    rows.every((r) => toCents(r.amount) > 0) &&
+    remainderCents === 0;
+
+  // F46 — focus management: remember the trigger, move focus into the
+  // dialog on open, trap Tab within it, close on Escape, restore focus to
+  // the trigger on close (mount/unmount only — deps intentionally empty).
+  useEffect(() => {
+    triggerRef.current = document.activeElement;
+    firstInputRef.current?.focus();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== "Tab" || !modalRef.current) return;
+      const focusable = Array.from(
+        modalRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey) {
+        if (active === first || !modalRef.current.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (active === last || !modalRef.current.contains(active)) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      if (triggerRef.current instanceof HTMLElement) {
+        triggerRef.current.focus();
+      }
+    };
+  }, []);
 
   const update = (i: number, patch: Partial<ChildRow>) =>
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -58,8 +129,11 @@ export default function SplitTransactionModal({ tx, onClose, onSplit }: Props) {
     try {
       const updated = await transactionService.split(
         tx.id,
+        // F46 — derive the submitted amount from the same cents value the
+        // gate above checked, not a second independent `.toFixed(2)` that
+        // could round differently and reintroduce the drift.
         rows.map((r) => ({
-          amount: parseFloat(r.amount).toFixed(2),
+          amount: (toCents(r.amount) / 100).toFixed(2),
           category: r.category,
           description: r.description || undefined,
         })),
@@ -75,9 +149,21 @@ export default function SplitTransactionModal({ tx, onClose, onSplit }: Props) {
   };
 
   return (
+    // F46 — the backdrop's click-to-close is a mouse convenience; Escape and
+    // the Cancel button (both fully keyboard-reachable) are the equivalent,
+    // so the two eslint-disables below are deliberate, not an oversight.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div style={overlay} onClick={onClose}>
-      <div style={modal} onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ marginTop: 0 }}>Split transaction</h3>
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */}
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={MODAL_TITLE_ID}
+        style={modal}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id={MODAL_TITLE_ID} style={{ marginTop: 0 }}>Split transaction</h3>
         <p style={{ color: "var(--muted)", fontSize: "0.85rem", marginTop: 0 }}>
           {tx.description || "(no description)"} — {tx.category} —{" "}
           <strong>{parentAmount.toFixed(2)} {tx.currency}</strong>
@@ -86,6 +172,8 @@ export default function SplitTransactionModal({ tx, onClose, onSplit }: Props) {
         {rows.map((r, i) => (
           <div key={i} style={rowStyle}>
             <input
+              ref={i === 0 ? firstInputRef : undefined}
+              aria-label={`Amount for row ${i + 1}`}
               type="number"
               step="0.01"
               min="0"
@@ -96,6 +184,7 @@ export default function SplitTransactionModal({ tx, onClose, onSplit }: Props) {
               disabled={busy}
             />
             <select
+              aria-label={`Category for row ${i + 1}`}
               value={r.category}
               onChange={(e) => update(i, { category: e.target.value as Category })}
               style={inputStyle}
@@ -106,6 +195,7 @@ export default function SplitTransactionModal({ tx, onClose, onSplit }: Props) {
               ))}
             </select>
             <input
+              aria-label={`Description for row ${i + 1}`}
               type="text"
               placeholder="description (optional)"
               value={r.description}
@@ -117,6 +207,7 @@ export default function SplitTransactionModal({ tx, onClose, onSplit }: Props) {
               onClick={() => removeRow(i)}
               disabled={rows.length <= 2 || busy}
               title={rows.length <= 2 ? "Minimum 2 children" : "Remove this row"}
+              aria-label={rows.length <= 2 ? "Minimum 2 children" : `Remove row ${i + 1}`}
               style={delBtn}
             >
               ✕
@@ -129,15 +220,15 @@ export default function SplitTransactionModal({ tx, onClose, onSplit }: Props) {
         </button>
 
         <div style={{ marginTop: "0.8rem", padding: "0.5rem", background: "rgba(15,23,42,0.4)", borderRadius: "0.4rem", fontSize: "0.85rem" }}>
-          Children sum: <strong>{childSum.toFixed(2)}</strong> ·
+          Children sum: <strong>{(childCents / 100).toFixed(2)}</strong> ·
           {" "}Parent: <strong>{parentAmount.toFixed(2)}</strong> ·
-          {" "}Remainder: <strong style={{ color: Math.abs(remainder) < 0.005 ? "#22c55e" : "#f59e0b" }}>
+          {" "}Remainder: <strong style={{ color: remainderCents === 0 ? "#22c55e" : "#f59e0b" }}>
             {remainder.toFixed(2)}
           </strong>
         </div>
 
         {error && (
-          <p style={{ color: "#f87171", fontSize: "0.85rem", marginTop: "0.5rem" }}>{error}</p>
+          <p role="alert" style={{ color: "#f87171", fontSize: "0.85rem", marginTop: "0.5rem" }}>{error}</p>
         )}
 
         <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>

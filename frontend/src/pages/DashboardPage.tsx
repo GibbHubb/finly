@@ -26,6 +26,21 @@ const CONFIDENCE_COLOR: Record<string, string> = {
   low: "#94a3b8",
 };
 
+// F46 — standard visually-hidden pattern: present to assistive tech, removed
+// from visual layout. Kept local to this component rather than added to
+// src/index.css, which §4 of the plan keeps out of scope.
+const visuallyHidden: React.CSSProperties = {
+  position: "absolute",
+  width: "1px",
+  height: "1px",
+  padding: 0,
+  margin: "-1px",
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  whiteSpace: "nowrap",
+  border: 0,
+};
+
 export default function DashboardPage() {
   const { user, logout, baseCurrency, setBaseCurrency, baseCurrencyError } = useAuthStore();
   const { transactions, totalIncome, totalExpense, balance, isLoading, error: txError } = useTransactions();
@@ -245,6 +260,7 @@ export default function DashboardPage() {
         <span>Hello, {user?.full_name}</span>
         <select
           className="currency-select"
+          aria-label="Display currency"
           value={baseCurrency}
           onChange={(e) => setBaseCurrency(e.target.value)}
           title="Display currency"
@@ -260,6 +276,7 @@ export default function DashboardPage() {
         </p>
       )}
 
+      <main>
       <div className="stats">
         <div className="stat-card income">
           <p>Income</p>
@@ -298,38 +315,75 @@ export default function DashboardPage() {
       <div className="charts">
         <div className="chart-card">
           <h3>6-Month Overview</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={monthlyData}>
-              <XAxis dataKey="month" />
-              <YAxis tickFormatter={(v: number) => formatCurrency(v)} />
-              <Tooltip formatter={(v: number) => formatCurrency(v)} />
-              <Bar dataKey="income" fill="#22c55e" radius={[4,4,0,0]} />
-              <Bar dataKey="expense" fill="#f43f5e" radius={[4,4,0,0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          {/* F46 — Recharts renders an inert SVG with no accessible name; role="img"
+              collapses it to a single node in the a11y tree and this aria-label is
+              the text alternative a screen reader announces instead. */}
+          <div
+            role="img"
+            aria-label={
+              monthlyData.length === 0
+                ? "6-month income and expense overview. No data yet."
+                : `6-month income and expense overview. ${monthlyData
+                    .map((d) => `${d.month}: ${formatCurrency(d.income)} income, ${formatCurrency(d.expense)} expense`)
+                    .join("; ")}`
+            }
+          >
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={monthlyData}>
+                <XAxis dataKey="month" />
+                <YAxis tickFormatter={(v: number) => formatCurrency(v)} />
+                <Tooltip formatter={(v: number) => formatCurrency(v)} />
+                <Bar dataKey="income" fill="#22c55e" radius={[4,4,0,0]} />
+                <Bar dataKey="expense" fill="#f43f5e" radius={[4,4,0,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         <div className="chart-card">
           <h3>Spending by Category</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie
-                data={expenseByCategory}
-                dataKey="amount"
-                nameKey="name"
-                cx="50%" cy="50%"
-                innerRadius={50}
-                outerRadius={80}
-                paddingAngle={2}
-                cursor="pointer"
-                onClick={(d: { name?: string }) => d?.name && navigate(`/category/${d.name}`)}
-              >
-                {expenseByCategory.map((e, i) => <Cell key={i} fill={e.fill} />)}
-              </Pie>
-              <Tooltip formatter={(v: number) => formatCurrency(v)} />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
+          {/* F46 — code review caught the first pass here: `role="img"` on a
+              chart that still had a live `onClick` drill-down formally told
+              assistive tech "this is a static picture", hiding the one real
+              interaction it has. The SVG is now aria-hidden (its data is
+              fully duplicated below) and the drill-down gets a REAL
+              keyboard-operable equivalent — a link list, visually hidden but
+              in the a11y tree — instead of a label that only describes the
+              picture without offering its behaviour. */}
+          <div aria-hidden="true">
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie
+                  data={expenseByCategory}
+                  dataKey="amount"
+                  nameKey="name"
+                  cx="50%" cy="50%"
+                  innerRadius={50}
+                  outerRadius={80}
+                  paddingAngle={2}
+                  cursor="pointer"
+                  onClick={(d: { name?: string }) => d?.name && navigate(`/category/${d.name}`)}
+                >
+                  {expenseByCategory.map((e, i) => <Cell key={i} fill={e.fill} />)}
+                </Pie>
+                <Tooltip formatter={(v: number) => formatCurrency(v)} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          {expenseByCategory.length === 0 ? (
+            <p style={visuallyHidden}>Spending by category: no expense transactions yet.</p>
+          ) : (
+            <ul style={visuallyHidden}>
+              {expenseByCategory.map((e) => (
+                <li key={e.name}>
+                  <Link to={`/category/${e.name}`}>
+                    {e.name}: {formatCurrency(e.amount)}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
 
@@ -363,18 +417,18 @@ export default function DashboardPage() {
       <div className="main-grid">
         <form className="add-form" onSubmit={handleAdd}>
           <h3>Add Transaction</h3>
-          <select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as "income" | "expense" }))}>
+          <select aria-label="Transaction type" value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as "income" | "expense" }))}>
             <option value="expense">Expense</option>
             <option value="income">Income</option>
           </select>
-          <input type="number" min="0.01" step="0.01" placeholder="Amount (€)" value={form.amount || ""} onChange={(e) => setForm((f) => ({ ...f, amount: parseFloat(e.target.value) }))} required />
-          <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as Category }))}>
+          <input aria-label="Amount (€)" type="number" min="0.01" step="0.01" placeholder="Amount (€)" value={form.amount || ""} onChange={(e) => setForm((f) => ({ ...f, amount: parseFloat(e.target.value) }))} required />
+          <select aria-label="Category" value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as Category }))}>
             {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <input placeholder="Description (optional)" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
-          <input type="date" value={form.transaction_date} onChange={(e) => setForm((f) => ({ ...f, transaction_date: e.target.value }))} required />
+          <input aria-label="Description (optional)" placeholder="Description (optional)" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+          <input aria-label="Transaction date" type="date" value={form.transaction_date} onChange={(e) => setForm((f) => ({ ...f, transaction_date: e.target.value }))} required />
           <button type="submit">Add</button>
-          {addError && <div className="import-toast error">{addError}</div>}
+          {addError && <div className="import-toast error" role="alert">{addError}</div>}
           {budgetAlerts.map((a) => (
             <div key={a.clientId} className="import-toast error" role="alert" data-testid="budget-alert">
               Over budget: {a.category} is €{a.spent} of €{a.limit} (€{a.overage} over).{" "}
@@ -386,6 +440,7 @@ export default function DashboardPage() {
           <div className="import-section">
             <input
               ref={fileInputRef}
+              aria-label="Import CSV file"
               type="file"
               accept=".csv"
               style={{ display: "none" }}
@@ -466,7 +521,7 @@ export default function DashboardPage() {
               )}
             </div>
           )}
-          {importError && <div className="import-toast error">{importError}</div>}
+          {importError && <div className="import-toast error" role="alert">{importError}</div>}
         </form>
 
         <div className="tx-list">
@@ -490,7 +545,7 @@ export default function DashboardPage() {
           {isLoading && <p>Loading…</p>}
           {/* F38 — a failed list fetch used to look identical to a slow one. */}
           {txError && (
-            <p className="tx-error" style={{ color: "var(--expense)", fontSize: "0.85rem", padding: "0.5rem 0" }}>
+            <p className="tx-error" role="alert" style={{ color: "var(--expense)", fontSize: "0.85rem", padding: "0.5rem 0" }}>
               {txError}
             </p>
           )}
@@ -525,9 +580,14 @@ export default function DashboardPage() {
                 {tx.tags && tx.tags.length > 0 && (
                   <span style={{ marginLeft: "0.4rem" }}>
                     {tx.tags.map((t) => (
-                      <span
+                      // F46 — was a <span onClick>, invisible to keyboard and
+                      // screen-reader users alike. A <button> is natively
+                      // focusable and announced, and needs no extra key handler.
+                      <button
                         key={t.id}
+                        type="button"
                         title="Click ✕ to remove"
+                        aria-label={`Remove tag ${t.name}`}
                         onClick={async () => {
                           await tagService.unassign(tx.id, t.id);
                           refetchTransactions();
@@ -545,7 +605,7 @@ export default function DashboardPage() {
                         }}
                       >
                         #{t.name}
-                      </span>
+                      </button>
                     ))}
                   </span>
                 )}
@@ -589,6 +649,7 @@ export default function DashboardPage() {
           })()}
         </div>
       </div>
+      </main>
 
       {/* F25 — split modal */}
       {splitTx && (

@@ -77,7 +77,7 @@ export default function CategoryDrilldownPage() {
   const total = filtered.reduce((s, t) => s + parseFloat(t.amount), 0);
 
   return (
-    <div className="container" style={{ maxWidth: "900px", margin: "0 auto", padding: "1.5rem" }}>
+    <main className="container" style={{ maxWidth: "900px", margin: "0 auto", padding: "1.5rem" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.6rem" }}>
         <h2 style={{ margin: 0 }}>
           {name?.charAt(0).toUpperCase()}{name?.slice(1)} — transactions
@@ -89,6 +89,7 @@ export default function CategoryDrilldownPage() {
         <input
           type="text"
           placeholder="Search description…"
+          aria-label="Search description"
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
           style={inputStyle}
@@ -113,7 +114,7 @@ export default function CategoryDrilldownPage() {
       </div>
 
       {loading && <p style={{ color: "var(--muted)" }}>Loading…</p>}
-      {error && <p style={{ color: "#f87171" }}>{error}</p>}
+      {error && <p role="alert" style={{ color: "#f87171" }}>{error}</p>}
       {!loading && !error && filtered.length === 0 && (
         <p style={{ color: "var(--muted)" }}>
           No transactions in <strong>{name}</strong>
@@ -137,7 +138,7 @@ export default function CategoryDrilldownPage() {
           </div>
         ))}
       </div>
-    </div>
+    </main>
   );
 }
 

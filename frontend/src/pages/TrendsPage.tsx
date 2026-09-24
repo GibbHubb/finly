@@ -48,10 +48,11 @@ export default function TrendsPage() {
         <button onClick={logout} className="btn-ghost">Sign out</button>
       </header>
 
+      <main>
       <div className="trends-controls">
-        <label>
+        <label htmlFor="trends-window">
           Window:{" "}
-          <select value={months} onChange={(e) => setMonths(parseInt(e.target.value))}>
+          <select id="trends-window" value={months} onChange={(e) => setMonths(parseInt(e.target.value))}>
             <option value={3}>3 months</option>
             <option value={6}>6 months</option>
             <option value={12}>12 months</option>
@@ -59,7 +60,7 @@ export default function TrendsPage() {
         </label>
       </div>
 
-      {error && <div className="import-toast error">{error}</div>}
+      {error && <div className="import-toast error" role="alert">{error}</div>}
 
       <div className="chart-card">
         <h3>Expense trends — last {months} months</h3>
@@ -76,6 +77,7 @@ export default function TrendsPage() {
         <h3>Month-over-month change</h3>
         {loading ? <p>Loading…</p> : <ChangeTable data={data} />}
       </div>
+      </main>
     </div>
   );
 }
