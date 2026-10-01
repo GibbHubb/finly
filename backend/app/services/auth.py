@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy import update as sa_update
+from sqlalchemy import text, update as sa_update
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -103,6 +103,25 @@ def register_user(data: UserCreate, db: Session) -> User:
     return user
 
 
+def _serialise_login_attempts(db: Session, email: str) -> None:
+    """F60 — make count-then-insert atomic per email.
+
+    Without this, N parallel wrong guesses all read "4 failures" before any of
+    them inserts, so a burst can exceed the threshold before the 429 engages.
+    On Postgres a transaction-scoped advisory lock keyed on the email makes
+    concurrent attempts for the same email queue up: the next one counts only
+    after the previous one's failure row is committed. The lock releases at
+    COMMIT/ROLLBACK, so every exit path of login_user must end the transaction.
+
+    Different emails hash to different keys and do not block each other (a hash
+    collision only causes a harmless extra wait). SQLite has no advisory locks
+    and already serialises writers, so this is a no-op there (tests, local).
+    """
+    if db.get_bind().dialect.name != "postgresql":
+        return
+    db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"login:{email}"})
+
+
 def login_user(email: str, password: str, db: Session, now: datetime | None = None) -> Token:
     """F42 — DB-backed lockout in front of the password check.
 
@@ -111,6 +130,7 @@ def login_user(email: str, password: str, db: Session, now: datetime | None = No
     """
     now = now or datetime.utcnow()
     window_start = now - LOGIN_LOCKOUT_WINDOW
+    _serialise_login_attempts(db, email)
     recent_failures = (
         db.query(LoginAttempt)
         .filter(LoginAttempt.email == email, LoginAttempt.created_at >= window_start)
@@ -120,6 +140,7 @@ def login_user(email: str, password: str, db: Session, now: datetime | None = No
         # F42 — refused BEFORE the password is even checked: a correct 6th
         # guess must not be rewarded with a login, or the lockout leaks
         # whether the attacker just found the right password.
+        db.rollback()  # release the advisory lock before answering
         raise HTTPException(
             status_code=429,
             detail="Too many failed login attempts. Try again in a minute.",
@@ -128,7 +149,7 @@ def login_user(email: str, password: str, db: Session, now: datetime | None = No
     user = db.query(User).filter(User.email == email).first()
     if not user or not verify_password(password, user.hashed_password):
         db.add(LoginAttempt(email=email, created_at=now))
-        db.commit()
+        db.commit()  # also releases the advisory lock
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     return _issue_token_pair(user.id, db)
