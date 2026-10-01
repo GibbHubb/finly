@@ -220,7 +220,7 @@ const labelStyle: React.CSSProperties = {
   textTransform: "capitalize",
 };
 const btnStyle: React.CSSProperties = {
-  background: "var(--accent)",
+  background: "var(--accent-fill)",
   color: "#fff",
   border: "none",
   borderRadius: "8px",

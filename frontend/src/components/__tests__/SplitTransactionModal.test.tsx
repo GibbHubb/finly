@@ -101,6 +101,29 @@ describe("SplitTransactionModal — dialog semantics", () => {
     expect(document.activeElement).toBe(trigger);
     trigger.remove();
   });
+
+  // F46-fu — the dialog is portalled out of #root and #root goes inert while
+  // it is open; inert is lifted before focus goes back to a trigger inside it.
+  it("makes #root inert while open and restores focus into it on close", () => {
+    const appRoot = document.createElement("div");
+    appRoot.id = "root";
+    const trigger = document.createElement("button");
+    trigger.textContent = "Split";
+    appRoot.appendChild(trigger);
+    document.body.appendChild(appRoot);
+    trigger.focus();
+
+    const { unmount } = render(
+      <SplitTransactionModal tx={makeTx()} onClose={vi.fn()} onSplit={vi.fn()} />,
+    );
+    expect(appRoot).toHaveAttribute("inert");
+    expect(appRoot.contains(screen.getByRole("dialog"))).toBe(false);
+
+    unmount();
+    expect(appRoot).not.toHaveAttribute("inert");
+    expect(document.activeElement).toBe(trigger);
+    appRoot.remove();
+  });
 });
 
 describe("SplitTransactionModal — integer-cent remainder gate (F46)", () => {

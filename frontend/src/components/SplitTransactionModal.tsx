@@ -4,6 +4,7 @@
 // integer-cent remainder so the client gate matches the server's exact-cent
 // Decimal equality (services/transactions.py) instead of a float tolerance.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Transaction, Category } from "@/types";
 import { transactionService } from "@/services/transactions";
 import { useTransactionStore } from "@/store/transactionStore";
@@ -73,9 +74,19 @@ export default function SplitTransactionModal({ tx, onClose, onSplit }: Props) {
   // F46 — focus management: remember the trigger, move focus into the
   // dialog on open, trap Tab within it, close on Escape, restore focus to
   // the trigger on close (mount/unmount only — deps intentionally empty).
+  //
+  // F46-fu — and make everything behind the dialog inert. The dialog is
+  // portalled to <body> (below) so it is no longer inside #root; `inert` on
+  // #root then takes the page out of the tab order, the pointer and the
+  // accessibility tree in one attribute, which `aria-modal` alone only asks
+  // screen readers to honour. Leave an already-inert root alone, and lift it
+  // BEFORE restoring focus — an inert trigger cannot take focus.
   useEffect(() => {
     triggerRef.current = document.activeElement;
     firstInputRef.current?.focus();
+    const appRoot = document.getElementById("root");
+    const madeInert = !!appRoot && !appRoot.hasAttribute("inert");
+    if (madeInert) appRoot.setAttribute("inert", "");
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -107,6 +118,7 @@ export default function SplitTransactionModal({ tx, onClose, onSplit }: Props) {
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
+      if (madeInert) appRoot.removeAttribute("inert");
       if (triggerRef.current instanceof HTMLElement) {
         triggerRef.current.focus();
       }
@@ -148,7 +160,7 @@ export default function SplitTransactionModal({ tx, onClose, onSplit }: Props) {
     }
   };
 
-  return (
+  return createPortal(
     // F46 — the backdrop's click-to-close is a mouse convenience; Escape and
     // the Cancel button (both fully keyboard-reachable) are the equivalent,
     // so the two eslint-disables below are deliberate, not an oversight.
@@ -238,7 +250,8 @@ export default function SplitTransactionModal({ tx, onClose, onSplit }: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -266,7 +279,8 @@ const btn: React.CSSProperties = {
   borderRadius: "0.4rem", color: "inherit", cursor: "pointer", fontSize: "0.85rem",
 };
 const primaryBtn: React.CSSProperties = {
-  background: "#3b82f6", borderColor: "#3b82f6", color: "white",
+  // F46-fu — was #3b82f6 (white text 3.68:1); the shared fill token is 5.81:1.
+  background: "var(--accent-fill)", borderColor: "var(--accent-fill)", color: "white",
 };
 const delBtn: React.CSSProperties = {
   ...btn, width: "32px", padding: "0.3rem", color: "#94a3b8",

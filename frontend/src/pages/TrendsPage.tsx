@@ -63,7 +63,7 @@ export default function TrendsPage() {
       {error && <div className="import-toast error" role="alert">{error}</div>}
 
       <div className="chart-card">
-        <h3>Expense trends — last {months} months</h3>
+        <h2>Expense trends — last {months} months</h2>
         {loading ? (
           <p>Loading…</p>
         ) : data.every((d) => Object.keys(d.categories).length === 0) ? (
@@ -74,7 +74,7 @@ export default function TrendsPage() {
       </div>
 
       <div className="chart-card">
-        <h3>Month-over-month change</h3>
+        <h2>Month-over-month change</h2>
         {loading ? <p>Loading…</p> : <ChangeTable data={data} />}
       </div>
       </main>

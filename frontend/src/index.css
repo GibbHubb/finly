@@ -5,10 +5,20 @@
   --surface2: #1d2130;
   --border:   #252a3a;
   --text:     #e8eaf0;
-  --muted:    #7a7f96;
+  /* F46 — every text token clears WCAG AA (4.5:1) on every surface it sits on,
+     including --border, which the category chips use as a background. Checked
+     against #0d0f14 / #151820 / #1d2130 / #252a3a:
+       --muted    #8d92a8 → 6.22 / 5.75 / 5.19 / 4.63  (was #7a7f96: 4.48 on --surface)
+       --expense  #f65a74 → 6.05 / 5.61 / 5.05 / 4.51  (was #f43f5e: 4.36 on --surface2)
+     The *-fill tokens are for solid backgrounds that carry text: --accent and
+     --expense stay as they are for borders, bars and chart marks, where 3:1 is
+     the bar and the brighter shade reads better. */
+  --muted:    #8d92a8;
   --income:   #22c55e;
-  --expense:  #f43f5e;
+  --expense:  #f65a74;
+  --expense-fill: #d42a4c; /* white text 4.96:1 */
   --accent:   #6366f1;
+  --accent-fill:  #4f52e0; /* white 5.81:1, --text 4.83:1 */
   --accent2:  #818cf8;
   --radius:   12px;
   --font-head: "Syne", sans-serif;
@@ -29,11 +39,49 @@ html, body, #root {
 
 a { color: var(--accent2); text-decoration: none; }
 a:hover { text-decoration: underline; }
+/* F46 — a link inside running text must not rely on colour alone (WCAG 1.4.1;
+   axe link-in-text-block): #818cf8 against --muted body text is only 1.3:1. */
+p a, li a:not([class]) { text-decoration: underline; text-underline-offset: 0.15em; }
 
 input, select, button {
   font-family: inherit;
   font-size: inherit;
   color: inherit;
+}
+/* F46 — `color: inherit` above puts the light --text colour on the browser's
+   default white/grey control background (1.05:1). Give unstyled selects and
+   buttons a dark surface; :where() keeps specificity at zero so every class or
+   inline style still wins. */
+:where(select, button) {
+  background-color: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+:where(select) { padding: 0.3rem 0.5rem; }
+:where(select) option { background: var(--surface2); }
+
+/* F46 — visually hidden, still in the accessibility tree. The -focusable
+   variant comes back on screen while focus is inside it, so a sighted keyboard
+   user never tabs onto something invisible (WCAG 2.4.7). */
+.sr-only,
+.sr-only-focusable:not(:focus-within) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.sr-only-focusable:focus-within {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
 }
 
 /* ─── Auth Pages ─────────────────────────────────────────── */
@@ -139,7 +187,7 @@ input, select, button {
   transition: background 0.15s, color 0.15s;
 }
 .auth-card .demo-button:hover:not(:disabled) {
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
 }
 .auth-card .demo-button:disabled { opacity: 0.6; cursor: default; }
@@ -153,7 +201,7 @@ input, select, button {
 
 .auth-card button[type="submit"] {
   margin-top: 0.5rem;
-  background: var(--accent);
+  background: var(--accent-fill);
   border: none;
   border-radius: 8px;
   padding: 0.75rem;
@@ -223,6 +271,22 @@ input, select, button {
 
 .btn-ghost:hover { border-color: var(--accent); color: var(--text); }
 
+/* F46-fu — the import/bank buttons had no rule at all, so they rendered as the
+   browser's light-grey default under inherited light text (1.05:1). */
+.btn-import {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: border-color 0.15s;
+}
+.btn-import:hover:not(:disabled) { border-color: var(--accent); }
+.btn-import:disabled { opacity: 0.6; cursor: default; }
+.import-section { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 1rem; }
+.import-hint { color: var(--muted); font-size: 0.75rem; }
+
 /* ─── Stat Cards ─────────────────────────────────────────── */
 .stats {
   display: grid;
@@ -287,6 +351,7 @@ input, select, button {
   padding: 1.25rem 1.5rem;
 }
 
+.chart-card h2,
 .chart-card h3 {
   font-family: var(--font-head);
   font-size: 0.85rem;
@@ -344,7 +409,7 @@ input, select, button {
 .add-form select option { background: var(--surface2); }
 
 .add-form button[type="submit"] {
-  background: var(--accent);
+  background: var(--accent-fill);
   border: none;
   border-radius: 8px;
   padding: 0.7rem;
@@ -502,7 +567,7 @@ input, select, button {
 }
 .tx-filter-num { max-width: 100px; flex: 0 0 auto; }
 .tx-filter-clear {
-  background: var(--expense);
+  background: var(--expense-fill);
   color: #fff;
   border: none;
   border-radius: 6px;
@@ -691,7 +756,7 @@ input, select, button {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  background: var(--expense);
+  background: var(--expense-fill);
   color: #fff;
   padding: 0.75rem 1rem;
   border-radius: var(--radius);

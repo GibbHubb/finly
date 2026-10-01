@@ -252,7 +252,7 @@ const labelStyle: React.CSSProperties = {
 };
 
 const btnStyle: React.CSSProperties = {
-  background: "var(--accent)",
+  background: "var(--accent-fill)",
   color: "#fff",
   border: "none",
   borderRadius: "8px",

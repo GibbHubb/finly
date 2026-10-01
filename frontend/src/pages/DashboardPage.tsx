@@ -26,21 +26,6 @@ const CONFIDENCE_COLOR: Record<string, string> = {
   low: "#94a3b8",
 };
 
-// F46 — standard visually-hidden pattern: present to assistive tech, removed
-// from visual layout. Kept local to this component rather than added to
-// src/index.css, which §4 of the plan keeps out of scope.
-const visuallyHidden: React.CSSProperties = {
-  position: "absolute",
-  width: "1px",
-  height: "1px",
-  padding: 0,
-  margin: "-1px",
-  overflow: "hidden",
-  clip: "rect(0, 0, 0, 0)",
-  whiteSpace: "nowrap",
-  border: 0,
-};
-
 export default function DashboardPage() {
   const { user, logout, baseCurrency, setBaseCurrency, baseCurrencyError } = useAuthStore();
   const { transactions, totalIncome, totalExpense, balance, isLoading, error: txError } = useTransactions();
@@ -350,6 +335,13 @@ export default function DashboardPage() {
               keyboard-operable equivalent — a link list, visually hidden but
               in the a11y tree — instead of a label that only describes the
               picture without offering its behaviour. */}
+          {/* F46-fu — axe aria-hidden-focus: recharts makes the pie layer a tab
+              stop (tabindex=0) by default, so the "hidden" SVG still took
+              keyboard focus and a screen reader landed on nothing. The SVG
+              stays hidden and out of the tab order (rootTabIndex=-1); the
+              link list below is the one keyboard/AT route to the drill-down,
+              and it becomes visible while focused so sighted keyboard users
+              can see where they are. */}
           <div aria-hidden="true">
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
@@ -361,6 +353,7 @@ export default function DashboardPage() {
                   innerRadius={50}
                   outerRadius={80}
                   paddingAngle={2}
+                  rootTabIndex={-1}
                   cursor="pointer"
                   onClick={(d: { name?: string }) => d?.name && navigate(`/category/${d.name}`)}
                 >
@@ -372,9 +365,9 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           </div>
           {expenseByCategory.length === 0 ? (
-            <p style={visuallyHidden}>Spending by category: no expense transactions yet.</p>
+            <p className="sr-only">Spending by category: no expense transactions yet.</p>
           ) : (
-            <ul style={visuallyHidden}>
+            <ul className="sr-only-focusable" aria-label="Spending by category">
               {expenseByCategory.map((e) => (
                 <li key={e.name}>
                   <Link to={`/category/${e.name}`}>

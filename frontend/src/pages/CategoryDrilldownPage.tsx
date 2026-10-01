@@ -79,9 +79,9 @@ export default function CategoryDrilldownPage() {
   return (
     <main className="container" style={{ maxWidth: "900px", margin: "0 auto", padding: "1.5rem" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.6rem" }}>
-        <h2 style={{ margin: 0 }}>
+        <h1 style={{ margin: 0, fontFamily: "var(--font-head)", fontSize: "1.4rem" }}>
           {name?.charAt(0).toUpperCase()}{name?.slice(1)} — transactions
-        </h2>
+        </h1>
         <Link to="/dashboard" style={{ fontSize: "0.85rem", color: "var(--muted)" }}>← Back to Dashboard</Link>
       </div>
 
