@@ -1,11 +1,15 @@
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Date, DateTime, ForeignKey, Index, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
+
+if TYPE_CHECKING:  # F62 — for the type checker only; the mapper resolves the strings
+    from app.models.user import User
 
 
 class TransactionType(str, Enum):

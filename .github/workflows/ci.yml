@@ -38,9 +38,8 @@ jobs:
       # pin, or add a per-ID `--ignore-vuln` with the reason written next to it. Never blanket.
       - name: Audit dependencies (pip-audit)
         run: pip-audit -r ../requirements.txt
-      # F61 — mypy, non-strict, REPORT-ONLY: 20 errors at its baseline (listed in backend/mypy.ini).
-      - name: Type check (mypy, report-only)
-        continue-on-error: true
+      # F61/F62 — mypy, non-strict, BLOCKING (0 errors since F62; config in backend/mypy.ini).
+      - name: Type check (mypy)
         run: mypy
 
       - run: alembic upgrade head

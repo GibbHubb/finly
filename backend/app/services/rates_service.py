@@ -144,15 +144,17 @@ def _persist_rates(db: Session, d: date, rates: dict[str, Decimal]) -> None:
     if not rows:
         return
     dialect = db.get_bind().dialect.name
+    conflict = ["rate_date", "currency"]
     if dialect == "postgresql":
-        from sqlalchemy.dialects.postgresql import insert
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        db.execute(pg_insert(FxRate).values(rows).on_conflict_do_nothing(index_elements=conflict))
     elif dialect == "sqlite":
-        from sqlalchemy.dialects.sqlite import insert
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+        db.execute(sqlite_insert(FxRate).values(rows).on_conflict_do_nothing(index_elements=conflict))
     else:  # pragma: no cover — finly runs on exactly these two
         raise NotImplementedError(f"_persist_rates: no conflict-tolerant insert for {dialect}")
-    db.execute(
-        insert(FxRate).values(rows).on_conflict_do_nothing(index_elements=["rate_date", "currency"])
-    )
     db.commit()
 
 

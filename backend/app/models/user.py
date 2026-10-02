@@ -1,9 +1,15 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
+
+if TYPE_CHECKING:  # F62 — for the type checker only; the mapper resolves the strings
+    from app.models.budget import Budget
+    from app.models.savings_goal import SavingsGoal
+    from app.models.transaction import Transaction
 
 
 class User(Base):

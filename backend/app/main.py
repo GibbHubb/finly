@@ -1,3 +1,4 @@
+import importlib
 import logging
 import uuid
 
@@ -5,19 +6,18 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-import app.models.bank_connection  # noqa: F401  — F27
-import app.models.budget  # noqa: F401
-import app.models.categorisation_rule  # noqa: F401
-import app.models.fx_rate  # noqa: F401
-import app.models.import_mapping  # noqa: F401
-import app.models.login_attempt  # noqa: F401  — F42
-import app.models.refresh_token  # noqa: F401  — F42
-import app.models.savings_goal  # noqa: F401
-import app.models.tag  # noqa: F401  — F29
-import app.models.transaction  # noqa: F401
-import app.models.user  # noqa: F401 — register models with SQLAlchemy
 from app.api.v1.router import api_router
 from app.db.session import engine
+
+# Register every model with SQLAlchemy. F62 — this used to be eleven `import app.models.x`
+# lines, and each one binds the name `app` to the PACKAGE; `app = FastAPI(...)` below then
+# rebinds it. That works at runtime but made mypy type every later `app.` as the module.
+for _model in (
+    "bank_connection", "budget", "categorisation_rule", "fx_rate", "import_mapping",
+    "login_attempt", "refresh_token", "savings_goal", "tag", "transaction", "user",
+):
+    importlib.import_module(f"app.models.{_model}")
+
 
 # F48 — one JSON object per line, so a real run pipes through `jq`. This
 # REPLACES the root handlers rather than adding one: basicConfig's plain-text

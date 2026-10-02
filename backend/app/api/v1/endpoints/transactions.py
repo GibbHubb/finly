@@ -39,6 +39,14 @@ from app.services.transactions import (
     update_transaction,
 )
 
+
+def _with_alerts(tx, alerts: list[dict]) -> TransactionOut:
+    """F62 — the write response with its F35/F53 budget alerts. This used to set an ad-hoc
+    `budget_alerts` attribute on the ORM object; building the response model says the same
+    thing without inventing a column the model does not have."""
+    return TransactionOut.model_validate(tx).model_copy(update={"budget_alerts": alerts})
+
+
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
@@ -179,8 +187,7 @@ async def add_transaction(
         },
     })
 
-    tx.budget_alerts = crossed_alerts(current_user.id, before, db)
-    return tx
+    return _with_alerts(tx, crossed_alerts(current_user.id, before, db))
 
 
 @router.patch("/{tx_id}", response_model=TransactionOut)
@@ -203,8 +210,7 @@ def edit_transaction(
                 spend_key(data.category or old.category, data.transaction_date or old.transaction_date)]
         before = snapshot_spend(current_user.id, keys, db)
     tx = update_transaction(tx_id, current_user.id, data, db)
-    tx.budget_alerts = crossed_alerts(current_user.id, before, db)
-    return tx
+    return _with_alerts(tx, crossed_alerts(current_user.id, before, db))
 
 
 @router.delete("/{tx_id}", status_code=204)
@@ -296,8 +302,7 @@ def split(
         keys += [spend_key(c.category, parent.transaction_date) for c in body.children]
         before = snapshot_spend(current_user.id, keys, db)
     tx = split_transaction(tx_id, current_user.id, body.children, db)
-    tx.budget_alerts = crossed_alerts(current_user.id, before, db)
-    return tx
+    return _with_alerts(tx, crossed_alerts(current_user.id, before, db))
 
 
 @router.delete("/{tx_id}/split", response_model=TransactionOut)

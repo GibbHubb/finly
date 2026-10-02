@@ -17,9 +17,6 @@ select = ["E", "F", "I"]
 ignore = ["E501"]
 
 [lint.per-file-ignores]
-# SQLAlchemy relationship annotations name other models as strings ("User"); the mapper
-# registry resolves them at configure time. Importing them for the linter creates cycles.
-"app/models/*" = ["F821"]
 # pytest fixture imported from a sibling module and then requested by parameter name:
 # F811 is how pyflakes sees that pattern, and it is the correct use of a shared fixture.
 "tests/test_fx_outage_f57.py" = ["F811"]
