@@ -31,3 +31,5 @@ python-dateutil==2.9.0.post0
 # F47 — the backend's lint and dependency-audit gates (ci.yml). Config: backend/ruff.toml.
 ruff==0.8.4
 pip-audit==2.7.3
+# F61 — type checking, non-strict baseline, report-only in CI. Config: backend/mypy.ini.
+mypy==2.4.0

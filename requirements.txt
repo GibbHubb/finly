@@ -4,15 +4,19 @@
 # F43 — this is now the RUNTIME list only: what the deployed function needs to serve a
 # request. Test and local-dev tools live in requirements-dev.txt (which includes this file),
 # so the function no longer installs pytest and friends into every cold start.
-fastapi==0.115.6
+fastapi==0.142.2
+# F61 — pinned directly: it was transitive via fastapi, and 0.41.3 carried 7 advisories.
+starlette==1.7.0
 sqlalchemy==2.0.36
 alembic==1.14.0
 pydantic[email]==2.10.3
 pydantic-settings==2.7.0
-python-jose[cryptography]==3.3.0
-cryptography==43.0.3  # F31 — pinned directly; previously only available transitively via python-jose
+# F61 — python-jose replaced by PyJWT: python-jose 3.3.0 had 3 advisories and pulled in ecdsa,
+# which has an advisory with NO fix. finly only signs and verifies HS256, which PyJWT does natively.
+PyJWT==2.15.1
+cryptography==50.0.2  # F31 — Fernet at-rest encryption (core/crypto.py); F61 bumped from 43.0.3 (6 advisories)
 bcrypt==4.3.0
-python-multipart==0.0.12
+python-multipart==0.0.32  # F61 — from 0.0.12 (7 advisories)
 numpy==2.2.5
 httpx==0.28.1
 # F34 — apscheduler removed. Both in-process schedulers are Vercel Cron

@@ -32,15 +32,16 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
       # F47 — known-vulnerability scan of the RUNTIME list (what the deployed function installs).
-      # ⚠️ NOT YET A GATE. Its first run (2026-10-01) found 24 advisories in 5 pinned packages
-      # (starlette 0.41.3 via fastapi, python-multipart 0.0.12, cryptography 43.0.3,
-      # python-jose 3.3.0, ecdsa 0.19.2 — the last with no fix). Bumping pins is its own ticket,
-      # not a side effect of a coverage ticket, and a blanket --ignore-vuln would hide the next
-      # one too. So it runs, prints every advisory on every push, and is made blocking by
-      # deleting `continue-on-error` in the ticket that clears the list.
-      - name: Audit dependencies (pip-audit, report-only until the pin bump lands)
-        continue-on-error: true
+      # F61 — BLOCKING. The first run found 24 advisories in 5 pins; F61 bumped fastapi/starlette,
+      # cryptography and python-multipart and replaced python-jose (and its unfixable ecdsa) with
+      # PyJWT. 0 known vulnerabilities on 2026-10-02. A new advisory now fails the build: bump the
+      # pin, or add a per-ID `--ignore-vuln` with the reason written next to it. Never blanket.
+      - name: Audit dependencies (pip-audit)
         run: pip-audit -r ../requirements.txt
+      # F61 — mypy, non-strict, REPORT-ONLY: 20 errors at its baseline (listed in backend/mypy.ini).
+      - name: Type check (mypy, report-only)
+        continue-on-error: true
+        run: mypy
 
       - run: alembic upgrade head
         env:
@@ -113,7 +114,7 @@ jobs:
       PYTHONPATH: .
       DATABASE_URL: postgresql://postgres:ci@localhost:5432/finly_ci
       # A non-SQLite DATABASE_URL makes the app refuse the dev default (F42); this is CI's own.
-      SECRET_KEY: ci-only-not-a-secret-f45
+      SECRET_KEY: ci-only-not-a-secret-f45-padded-to-32-bytes-for-pyjwt
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

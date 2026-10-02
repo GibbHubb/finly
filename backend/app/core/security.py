@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import bcrypt
-from jose import JWTError, jwt
+import jwt
 
 from app.core.config import settings
 
@@ -48,5 +48,5 @@ def create_refresh_token(subject: Any, jti: str, expires_delta: timedelta | None
 def decode_token(token: str) -> dict:
     try:
         return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-    except JWTError:
+    except jwt.PyJWTError:  # F61 — was jose.JWTError (expired, bad signature, malformed)
         raise ValueError("Invalid token")
