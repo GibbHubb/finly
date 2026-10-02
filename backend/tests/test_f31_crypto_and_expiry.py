@@ -9,7 +9,6 @@ Covers:
 """
 from __future__ import annotations
 
-import importlib
 import unittest.mock as mock
 
 import pytest
@@ -68,6 +67,17 @@ def test_decrypt_raises_when_key_unset():
 # 3 — sync_connection sets status="expired" on a mocked GoCardless 401
 # ---------------------------------------------------------------------------
 
+def _a_user(db) -> int:
+    """F45 — these used a bare user_id=1 with no such user. SQLite does not enforce foreign
+    keys, so it passed; Postgres does, and the first run there failed both tests."""
+    from app.models.user import User
+
+    u = User(email="f31@finly.dev", hashed_password="x", full_name="F31")
+    db.add(u)
+    db.flush()
+    return u.id
+
+
 def test_sync_connection_expired_on_401(db):
     """sync_connection flips status to 'expired' (not 'error') on a 401."""
     from app.models.bank_connection import BankConnection
@@ -77,7 +87,7 @@ def test_sync_connection_expired_on_401(db):
     # Insert a minimal connection row with a known account_id so we skip
     # the requisition-lookup branch and go straight to fetch_transactions.
     conn = BankConnection(
-        user_id=1,
+        user_id=_a_user(db),
         requisition_id="req-test-401",
         account_id="acc-test-401",
         institution_id="TEST_INST",
@@ -106,7 +116,7 @@ def test_sync_connection_error_on_transient(db):
     from app.services.gocardless_service import GoCardlessError
 
     conn = BankConnection(
-        user_id=1,
+        user_id=_a_user(db),
         requisition_id="req-test-500",
         account_id="acc-test-500",
         institution_id="TEST_INST",
@@ -119,7 +129,7 @@ def test_sync_connection_error_on_transient(db):
         "app.services.bank_sync_service.gc.fetch_transactions",
         side_effect=GoCardlessError("Internal Server Error", status=500),
     ):
-        result = sync_connection(conn, db)
+        sync_connection(conn, db)
 
     assert conn.status == "error", (
         f"Expected status='error' on 500, got '{conn.status}'"

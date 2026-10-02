@@ -1,12 +1,15 @@
-from sqlalchemy.orm import Session
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.models.budget import Budget
 from app.schemas.budget import BudgetCreate
 
+DUPLICATE_BUDGET = "Budget for this category/month already exists"
 
-def create_budget(data: BudgetCreate, user_id: int, db: Session) -> Budget:
-    existing = (
+
+def _find_existing(data: BudgetCreate, user_id: int, db: Session) -> Budget | None:
+    return (
         db.query(Budget)
         .filter(
             Budget.user_id == user_id,
@@ -16,14 +19,21 @@ def create_budget(data: BudgetCreate, user_id: int, db: Session) -> Budget:
         )
         .first()
     )
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail="Budget for this category/month already exists",
-        )
+
+
+def create_budget(data: BudgetCreate, user_id: int, db: Session) -> Budget:
+    # The SELECT is the fast path and the friendly message. It is NOT the rule: two concurrent
+    # POSTs both pass it. F45 — `uq_budgets_user_category_period` is the rule, and losing that
+    # race returns the same 409 instead of a second budget (or a 500).
+    if _find_existing(data, user_id, db):
+        raise HTTPException(status_code=409, detail=DUPLICATE_BUDGET)
     budget = Budget(**data.model_dump(), user_id=user_id)
     db.add(budget)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=DUPLICATE_BUDGET)
     db.refresh(budget)
     return budget
 

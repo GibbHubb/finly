@@ -133,8 +133,26 @@ def _load_cached_rates_for_date(db: Session, d: date) -> dict[str, Decimal]:
 
 
 def _persist_rates(db: Session, d: date, rates: dict[str, Decimal]) -> None:
-    for cur, rate in rates.items():
-        db.add(FxRate(rate_date=d, currency=cur, rate_vs_eur=rate))
+    """Cache one date's rates. Tolerates a concurrent writer (F45).
+
+    Two requests converting on the same new date both miss the cache, both fetch, and both
+    insert. `uq_fx_rates_date_currency` rejects the second, which used to surface as an
+    IntegrityError — a 500 from whatever endpoint was converting. The rates are the same
+    published ECB numbers either way, so the loser simply keeps the winner's rows.
+    """
+    rows = [{"rate_date": d, "currency": cur, "rate_vs_eur": rate} for cur, rate in rates.items()]
+    if not rows:
+        return
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert
+    elif dialect == "sqlite":
+        from sqlalchemy.dialects.sqlite import insert
+    else:  # pragma: no cover — finly runs on exactly these two
+        raise NotImplementedError(f"_persist_rates: no conflict-tolerant insert for {dialect}")
+    db.execute(
+        insert(FxRate).values(rows).on_conflict_do_nothing(index_elements=["rate_date", "currency"])
+    )
     db.commit()
 
 
@@ -169,8 +187,13 @@ def convert_amount(
 ) -> Decimal | None:
     """Convert `amount` from `from_currency` to `to_currency` on `on_date`.
 
-    Uses EUR as the pivot. Returns None if either currency isn't supported;
-    returns `amount` unchanged when from == to.
+    Uses EUR as the pivot. Returns `amount` unchanged when from == to.
+
+    Returns **None** — never a guessed rate — when either currency is unsupported or when no
+    rate can be obtained for `on_date` (provider down, empty payload). This is the decision
+    F47 asked for and F52 made: the old identity fallback stored 100 USD as 100.00 EUR,
+    indistinguishable forever from a real 1:1 rate. Callers either refuse the write with a
+    503 (F55, F57) or store nothing; see docs/technical/api.md "Currency conversion".
     """
     src = (from_currency or "EUR").upper()
     dst = (to_currency or "EUR").upper()

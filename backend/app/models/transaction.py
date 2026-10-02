@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -27,6 +27,9 @@ class Category(str, Enum):
 
 class Transaction(Base):
     __tablename__ = "transactions"
+    # F44 created this index in a migration but never declared it here, so `alembic check`
+    # (F45) read the model as "no such index" and autogenerate would have proposed DROPPING it.
+    __table_args__ = (Index("ix_transactions_user_date", "user_id", "transaction_date"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)

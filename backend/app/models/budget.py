@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Integer, Numeric, String
+from sqlalchemy import ForeignKey, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -17,3 +17,10 @@ class Budget(Base):
     year: Mapped[int] = mapped_column(Integer, nullable=False)
 
     owner: Mapped["User"] = relationship(back_populates="budgets")
+
+    # F45 — one budget per (user, category, month, year), enforced by the DATABASE. The
+    # service's SELECT-then-INSERT check stays as the fast path and the friendly 409, but two
+    # concurrent POSTs both pass that SELECT; only a constraint makes the rule true.
+    __table_args__ = (
+        UniqueConstraint("user_id", "category", "month", "year", name="uq_budgets_user_category_period"),
+    )

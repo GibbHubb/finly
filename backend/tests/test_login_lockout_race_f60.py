@@ -30,6 +30,10 @@ PG_URL = os.environ.get("FINLY_TEST_PG_URL")
 BURST = 20
 
 
+@pytest.mark.skipif(
+    os.environ.get("TEST_DATABASE_URL", "").startswith("postgresql"),
+    reason="asserts the SQLite no-op; on the Postgres job the lock is real and the race tests below cover it",
+)
 def test_serialise_is_a_noop_on_sqlite(db):
     with mock.patch.object(db, "execute") as ex:
         auth_module._serialise_login_attempts(db, "a@finly.dev")

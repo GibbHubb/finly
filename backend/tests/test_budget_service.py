@@ -71,7 +71,10 @@ class TestCreateBudget:
 class TestListBudgets:
     def test_returns_only_current_user_budgets(self, db):
         alice, bob = UserFactory(), UserFactory()
-        BudgetFactory.create_batch(3, owner=alice, user_id=alice.id)
+        # F45 — one budget per (user, category, month, year) is now a database constraint,
+        # so three budgets for one user need three different months.
+        for month in (4, 5, 6):
+            BudgetFactory(owner=alice, user_id=alice.id, month=month)
         BudgetFactory(owner=bob, user_id=bob.id, month=1)
 
         result = get_user_budgets(alice.id, db)
