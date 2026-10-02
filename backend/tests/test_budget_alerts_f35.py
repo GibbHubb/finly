@@ -4,7 +4,6 @@
 category that was ALREADY over does not alert (that would be news about the past), and edits and
 splits alert exactly like creates (F53: they used to never alert).
 """
-import pytest
 
 
 def _h(client, email="f35@finly.dev"):

@@ -1,4 +1,3 @@
-import json
 from datetime import date
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -194,8 +193,8 @@ def edit_transaction(
     """Partially update an existing transaction."""
     # F53 — an edit can move spend INTO a category/month (new amount, category or date): snapshot
     # both where the row was and where it will be, then alert on anything that crossed.
-    from app.services.budget_alert_service import crossed_alerts, snapshot_spend, spend_key
     from app.models.transaction import Transaction
+    from app.services.budget_alert_service import crossed_alerts, snapshot_spend, spend_key
 
     old = db.query(Transaction).filter(Transaction.id == tx_id, Transaction.user_id == current_user.id).first()
     before = {}
@@ -287,8 +286,8 @@ def split(
     current_user: User = Depends(get_current_user),
 ):
     # F53 — moving part of an expense into another category can push THAT category over.
-    from app.services.budget_alert_service import crossed_alerts, snapshot_spend, spend_key
     from app.models.transaction import Transaction
+    from app.services.budget_alert_service import crossed_alerts, snapshot_spend, spend_key
 
     parent = db.query(Transaction).filter(Transaction.id == tx_id, Transaction.user_id == current_user.id).first()
     before = {}

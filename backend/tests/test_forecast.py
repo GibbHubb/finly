@@ -1,5 +1,4 @@
 """Tests for GET /api/v1/transactions/forecast"""
-from datetime import date
 
 
 def _auth_headers(client):

@@ -1,4 +1,5 @@
 from decimal import Decimal
+
 from pydantic import BaseModel, field_validator
 
 from app.models.transaction import Category

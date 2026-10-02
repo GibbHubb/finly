@@ -17,7 +17,6 @@ from app.models.user import User
 from app.services.auth import get_current_user
 from app.services.tags import normalise_tag_name, resolve_tag
 
-
 router = APIRouter(prefix="/tags", tags=["tags"])
 
 

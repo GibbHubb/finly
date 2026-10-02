@@ -10,9 +10,8 @@ from decimal import Decimal
 import httpx
 import pytest
 
-from app.models.fx_rate import FxRate
-from app.services import rates_service
 from app.models.transaction import Category
+from app.services import rates_service
 
 
 @pytest.fixture

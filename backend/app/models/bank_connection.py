@@ -9,6 +9,7 @@ Token encryption-at-rest is deliberately out of scope for the sandbox
 v1 — tracked as a follow-up.
 """
 from datetime import datetime
+
 from sqlalchemy import DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 

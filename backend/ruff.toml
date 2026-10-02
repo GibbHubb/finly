@@ -1,0 +1,27 @@
+# F47 — the backend's first linter. Deliberately narrow: pyflakes (F), pycodestyle errors (E)
+# and import order (I). Widen in a later ticket, not by stealth.
+#
+# Run from backend/ (as CI does) so `app` and `alembic` resolve as first-party.
+# Baseline when enabled (2026-10-01, ruff 0.8.4, `--select E,F,I`):
+#   644 at the default 88-column limit (564 of them E501), 104 at 120 columns, and 42 under
+#   this file (29 I001, 10 F401, 3 F841; E501 ignored, alembic/versions excluded).
+#   After `--fix` (I001, F401, F841) and the reasoned ignores below: 0.
+line-length = 120
+target-version = "py311"
+extend-exclude = [".venv", "alembic/versions"]
+
+[lint]
+select = ["E", "F", "I"]
+# E501: long lines are a formatting question and there is no formatter adopted yet. The 21
+# lines over 120 are URLs, SQL and assertion messages; wrapping them by hand is churn.
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+# SQLAlchemy relationship annotations name other models as strings ("User"); the mapper
+# registry resolves them at configure time. Importing them for the linter creates cycles.
+"app/models/*" = ["F821"]
+# pytest fixture imported from a sibling module and then requested by parameter name:
+# F811 is how pyflakes sees that pattern, and it is the correct use of a shared fixture.
+"tests/test_fx_outage_f57.py" = ["F811"]
+# Compact arrange lines (`a = ...; b = ...`) in tests are kept for readability.
+"tests/*" = ["E702"]

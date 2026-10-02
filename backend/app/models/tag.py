@@ -5,11 +5,11 @@ number of tags; a tag can be on any number of transactions. Filtering
 by tag is a separate concern handled in the transactions service.
 """
 from datetime import datetime
+
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Table, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
-
 
 # M2M join table — declarative Core Table so SA handles cascade cleanly.
 transaction_tags = Table(

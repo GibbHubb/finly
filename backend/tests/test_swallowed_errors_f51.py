@@ -1,6 +1,5 @@
 """F51 — the except blocks that used to swallow silently now degrade AND say so."""
 import io
-import json
 import logging
 from pathlib import Path
 

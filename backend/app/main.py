@@ -2,28 +2,30 @@ import logging
 import uuid
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from app.api.v1.router import api_router
-from app.db.session import Base, engine
-import app.models.user           # noqa: F401 — register models with SQLAlchemy
-import app.models.transaction    # noqa: F401
-import app.models.budget         # noqa: F401
-import app.models.savings_goal   # noqa: F401
-import app.models.import_mapping # noqa: F401
-import app.models.categorisation_rule # noqa: F401
-import app.models.fx_rate         # noqa: F401
 import app.models.bank_connection  # noqa: F401  — F27
-import app.models.tag               # noqa: F401  — F29
-import app.models.refresh_token     # noqa: F401  — F42
-import app.models.login_attempt     # noqa: F401  — F42
+import app.models.budget  # noqa: F401
+import app.models.categorisation_rule  # noqa: F401
+import app.models.fx_rate  # noqa: F401
+import app.models.import_mapping  # noqa: F401
+import app.models.login_attempt  # noqa: F401  — F42
+import app.models.refresh_token  # noqa: F401  — F42
+import app.models.savings_goal  # noqa: F401
+import app.models.tag  # noqa: F401  — F29
+import app.models.transaction  # noqa: F401
+import app.models.user  # noqa: F401 — register models with SQLAlchemy
+from app.api.v1.router import api_router
+from app.db.session import engine
 
 # F48 — one JSON object per line, so a real run pipes through `jq`. This
 # REPLACES the root handlers rather than adding one: basicConfig's plain-text
 # handler would otherwise emit every line twice, once parseable and once not.
 from app.observability import (  # noqa: E402
-    RequestContextMiddleware, build_info, configure_logging,
+    RequestContextMiddleware,
+    build_info,
+    configure_logging,
     unhandled_exception_handler,
 )
 
@@ -106,7 +108,7 @@ def health():
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         return {"status": "ok", "db": "up"}
-    except Exception as exc:  # noqa: BLE001 — any failure to reach the DB counts
+    except Exception:  # noqa: BLE001 — any failure to reach the DB counts
         # F48 — this used to return `str(exc)[:200]` to the caller, and /health
         # is unauthenticated and publicly routed (vercel.json:22).
         #

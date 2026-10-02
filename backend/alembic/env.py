@@ -1,6 +1,8 @@
 import os
 from logging.config import fileConfig
+
 from sqlalchemy import engine_from_config, pool
+
 from alembic import context
 
 config = context.config
@@ -12,7 +14,7 @@ db_url = os.environ.get("DATABASE_URL")
 if db_url:
     config.set_main_option("sqlalchemy.url", db_url)
 
-from app.db.session import Base  # noqa: E402
+import importlib  # noqa: E402
 
 # F34 — import EVERY model module, by walking the package.
 #
@@ -27,9 +29,10 @@ from app.db.session import Base  # noqa: E402
 #
 # A list that must be updated by hand every time a model is added is a list that
 # will be wrong. Walking the package cannot go stale.
-import pkgutil                     # noqa: E402
-import importlib                   # noqa: E402
-import app.models                  # noqa: E402
+import pkgutil  # noqa: E402
+
+import app.models  # noqa: E402
+from app.db.session import Base  # noqa: E402
 
 for _m in pkgutil.iter_modules(app.models.__path__):
     importlib.import_module(f"app.models.{_m.name}")

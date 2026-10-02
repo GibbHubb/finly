@@ -13,7 +13,6 @@ The rate fetch is driven through `httpx.MockTransport` on the service's real cli
 pattern), so the conversion code under test is the shipped one. Every "unchanged" assertion
 reads back through a FRESH session, not the request's session, so it sees what was committed.
 """
-from datetime import date
 from decimal import Decimal
 
 import httpx

@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine
-from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 

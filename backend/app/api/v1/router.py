@@ -1,6 +1,18 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, bank, budgets, categorisation_rules, forecast, reports, savings_goals, tags, test_utils, transactions, rates
+from app.api.v1.endpoints import (
+    auth,
+    bank,
+    budgets,
+    categorisation_rules,
+    forecast,
+    rates,
+    reports,
+    savings_goals,
+    tags,
+    test_utils,
+    transactions,
+)
 from app.core.config import settings
 
 api_router = APIRouter(prefix="/api/v1")

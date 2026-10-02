@@ -12,9 +12,9 @@ Also exposes a generic mapped-import path used by the column-mapping wizard
 """
 import csv
 import hashlib
-import logging
 import io
 import json
+import logging
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 

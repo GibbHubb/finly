@@ -42,7 +42,7 @@ def test_base_amount_equals_amount_when_currency_matches_base(client):
         "amount": "100.00", "type": "expense", "category": "food",
         "description": "euro shop", "transaction_date": "2026-03-05", "currency": "EUR",
     })
-    txs = client.get("/api/v1/transactions/", headers=headers).json()
+    client.get("/api/v1/transactions/", headers=headers).json()
     # TransactionOut doesn't expose base_amount yet, but summary uses it.
     res = client.get("/api/v1/transactions/summary?month=3&year=2026", headers=headers)
     data = res.json()

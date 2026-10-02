@@ -27,3 +27,7 @@ pytest-randomly==5.0.0
 # DISTRIBUTION name (`pydantic-settings`) without normalising. That broke
 # `pip install` outright — a worse failure than the one it was fixing.
 python-dateutil==2.9.0.post0
+
+# F47 — the backend's lint and dependency-audit gates (ci.yml). Config: backend/ruff.toml.
+ruff==0.8.4
+pip-audit==2.7.3

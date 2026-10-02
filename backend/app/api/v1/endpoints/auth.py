@@ -4,12 +4,17 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.session import get_db
+from app.models.user import User
 from app.schemas.user import RefreshRequest, Token, UserCreate, UserOut, UserUpdate
 from app.services.auth import (
-    demo_login, get_current_user, login_user, logout_session, refresh_session,
-    register_user, update_user,
+    demo_login,
+    get_current_user,
+    login_user,
+    logout_session,
+    refresh_session,
+    register_user,
+    update_user,
 )
-from app.models.user import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

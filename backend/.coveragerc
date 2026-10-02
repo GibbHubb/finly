@@ -1,4 +1,7 @@
 [run]
+# F47 — the coverage floors live in pytest.ini (--cov-fail-under, blended total) and in
+# .github/workflows/ci.yml (scripts/coverage_floor.py: lines and branches separately).
+# coverage.py has no branch-only threshold, which is why the second gate exists.
 branch = True
 source = app
 omit =

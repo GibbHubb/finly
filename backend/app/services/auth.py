@@ -2,7 +2,8 @@ from datetime import datetime, timedelta
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy import text, update as sa_update
+from sqlalchemy import text
+from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 
 from app.core.config import settings

@@ -13,10 +13,10 @@ from typing import TYPE_CHECKING
 import factory
 from factory.alchemy import SQLAlchemyModelFactory
 
+from app.core.security import hash_password
 from app.models.budget import Budget
 from app.models.transaction import Category, Transaction, TransactionType
 from app.models.user import User
-from app.core.security import hash_password
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

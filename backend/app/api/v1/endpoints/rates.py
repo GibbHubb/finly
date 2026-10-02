@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends
 
 from app.models.user import User
 from app.services.auth import get_current_user
-from app.services.rates_service import get_rates, SUPPORTED_CURRENCIES
+from app.services.rates_service import SUPPORTED_CURRENCIES, get_rates
 
 router = APIRouter(prefix="/rates", tags=["rates"])
 

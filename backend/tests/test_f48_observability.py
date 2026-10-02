@@ -20,8 +20,13 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.observability import (
-    JsonFormatter, RequestContextMiddleware, build_info,
-    unhandled_exception_handler, request_id_var, reset_secret_cache, scrub,
+    JsonFormatter,
+    RequestContextMiddleware,
+    build_info,
+    request_id_var,
+    reset_secret_cache,
+    scrub,
+    unhandled_exception_handler,
 )
 
 client = TestClient(app, raise_server_exceptions=False)

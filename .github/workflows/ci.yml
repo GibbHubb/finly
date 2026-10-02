@@ -8,8 +8,14 @@ on:
 
 jobs:
   backend:
-    name: Backend Tests
+    # F47 — one job per Python version. test.yml used to run the same suite on 3.11 while this
+    # ran it on 3.12, so every push ran the backend twice; it is folded in here as a matrix.
+    name: Backend Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
     defaults:
       run:
         working-directory: backend
@@ -17,18 +23,40 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: requirements*.txt   # F34/F43 - lists live at the repo root
       - run: pip install -r ../requirements-dev.txt   # F43 - dev list includes the runtime list
+
+      # F47 — the backend's first linter (config and baseline count in backend/ruff.toml).
+      - name: Lint (ruff)
+        run: ruff check .
+      # F47 — known-vulnerability scan of the RUNTIME list (what the deployed function installs).
+      # ⚠️ NOT YET A GATE. Its first run (2026-10-01) found 24 advisories in 5 pinned packages
+      # (starlette 0.41.3 via fastapi, python-multipart 0.0.12, cryptography 43.0.3,
+      # python-jose 3.3.0, ecdsa 0.19.2 — the last with no fix). Bumping pins is its own ticket,
+      # not a side effect of a coverage ticket, and a blanket --ignore-vuln would hide the next
+      # one too. So it runs, prints every advisory on every push, and is made blocking by
+      # deleting `continue-on-error` in the ticket that clears the list.
+      - name: Audit dependencies (pip-audit, report-only until the pin bump lands)
+        continue-on-error: true
+        run: pip-audit -r ../requirements.txt
+
       - run: alembic upgrade head
         env:
           DATABASE_URL: sqlite:///./test.db
           PYTHONPATH: .
+      # F47 — pytest.ini carries --cov-fail-under, so a coverage drop fails THIS step.
       - name: Run pytest
         env:
           PYTHONPATH: .
         run: set -o pipefail && pytest tests/ -v --tb=short 2>&1 | tee pytest-output.txt
+      # F47 — the blended total above can hide a branch slide behind a line gain; gate both.
+      - name: Coverage floor (lines and branches separately)
+        run: python ../scripts/coverage_floor.py coverage.xml --lines 91 --branches 79
+      # F47 — docs/technical/api.md must list every route the API serves.
+      - name: API doc covers every route
+        run: python ../scripts/api_doc.py --check
 
       # F34 — put the failure where it can be READ without a token.
       #
@@ -50,11 +78,80 @@ jobs:
           # 25-line tail loses exactly the summary line that matters.
           echo "::error::TAIL $(tail -n 20 pytest-output.txt 2>/dev/null | paste -sd@ -)"
       - name: Upload backend coverage
+        if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@v4
         with:
           name: backend-coverage
           path: backend/coverage.xml
           if-no-files-found: ignore
+
+  postgres:
+    # F45 — finly deploys on Postgres and every other job tests on SQLite. This is the job that
+    # would have caught F38 (func.strftime 500ing in production for months while CI was green).
+    #
+    # ⚠️ It runs `alembic downgrade base` and TRUNCATEs every table between tests. It must only
+    # ever point at the throwaway service container below — NEVER at Supabase, which finly
+    # shares with three other apps. tests/conftest.py refuses any host but localhost/postgres.
+    name: Postgres (migrations + suite)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: finly_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: postgresql://postgres:ci@localhost:5432/finly_ci
+      # A non-SQLite DATABASE_URL makes the app refuse the dev default (F42); this is CI's own.
+      SECRET_KEY: ci-only-not-a-secret-f45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r ../requirements-dev.txt
+
+      - name: Migrations apply from empty, reverse to base, and re-apply
+        run: |
+          set -euo pipefail
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+      - name: Each migration reverses and re-applies on its own (head -> -1 -> head, every step)
+        run: |
+          set -euo pipefail
+          steps=$(alembic history | grep -c -- '->')
+          for i in $(seq 1 "$steps"); do alembic downgrade -1; done
+          alembic current
+          for i in $(seq 1 "$steps"); do alembic upgrade +1; done
+          out=$(alembic current); grep -q '(head)' <<<"$out"
+      - name: Models and migrations agree (a model change without a migration fails here)
+        run: alembic check
+
+      - name: Full suite against Postgres (schema built by `alembic upgrade head`)
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:ci@localhost:5432/finly_tests
+          # F60's real-parallelism lockout race; it drops/creates its own schema, so a third db.
+          FINLY_TEST_PG_URL: postgresql+psycopg2://postgres:ci@localhost:5432/finly_race
+        run: |
+          set -o pipefail
+          psql postgresql://postgres:ci@localhost:5432/postgres -c 'CREATE DATABASE finly_tests' -c 'CREATE DATABASE finly_race'
+          pytest tests/ -v --tb=short --no-cov 2>&1 | tee pytest-output.txt
+      - name: Report the failure as annotations
+        if: failure()
+        run: echo "::error::TAIL $(tail -n 20 pytest-output.txt 2>/dev/null | paste -sd@ -)"
 
   frontend:
     name: Frontend Lint, Test & Build

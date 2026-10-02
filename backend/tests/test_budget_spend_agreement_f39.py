@@ -9,8 +9,8 @@ control at the bottom of the file's intent — that agreement is real.
 from decimal import Decimal
 
 from app.models.transaction import Category, Transaction, TransactionType
-from app.services.transactions import category_spend, get_monthly_summary
 from app.services.budget_alert_service import check_budget_overspend
+from app.services.transactions import category_spend, get_monthly_summary
 from tests.factories import BudgetFactory, TransactionFactory, UserFactory, bind_session
 
 MONTH, YEAR = 6, 2024

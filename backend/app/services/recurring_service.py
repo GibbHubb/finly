@@ -18,8 +18,6 @@ assignment code path is added.
 import logging
 import re
 from collections import defaultdict
-from datetime import date
-from decimal import Decimal
 from statistics import median
 
 from sqlalchemy.orm import Session

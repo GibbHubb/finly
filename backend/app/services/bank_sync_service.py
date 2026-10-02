@@ -8,7 +8,8 @@ inserted via the same Transaction creation pattern.
 from __future__ import annotations
 
 import logging
-from datetime import date as date_cls, datetime
+from datetime import date as date_cls
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Iterable
 
@@ -16,9 +17,9 @@ from sqlalchemy.orm import Session
 
 from app.models.bank_connection import BankConnection
 from app.models.transaction import Category, Transaction, TransactionType
+from app.services import gocardless_service as gc
 from app.services.categorisation import match_description
 from app.services.import_service import find_existing_import
-from app.services import gocardless_service as gc
 from app.services.transactions import _base_amount_for, _needs_rate, _user_base_currency
 
 logger = logging.getLogger(__name__)

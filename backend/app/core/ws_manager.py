@@ -1,6 +1,7 @@
 """WebSocket connection manager for broadcasting transaction events."""
 import json
 from collections import defaultdict
+
 from fastapi import WebSocket
 
 

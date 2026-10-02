@@ -14,14 +14,13 @@ Flow:
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
 from app.core.config import settings
-from app.models.user import User
+from app.db.session import get_db
 from app.models.bank_connection import BankConnection
-from app.services.auth import get_current_user
+from app.models.user import User
 from app.services import gocardless_service as gc
+from app.services.auth import get_current_user
 from app.services.bank_sync_service import sync_connection
-
 
 router = APIRouter(prefix="/bank", tags=["bank"])
 
