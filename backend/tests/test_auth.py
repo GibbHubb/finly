@@ -254,9 +254,21 @@ def test_secret_key_default_is_fine_on_sqlite():
 
 
 def test_secret_key_real_value_boots_off_sqlite():
-    s = Settings(_env_file=None, DATABASE_URL="postgresql://u:p@host:5432/db",
-                 SECRET_KEY="a-real-random-secret")
-    assert s.SECRET_KEY == "a-real-random-secret"
+    key = "a-real-random-secret-of-32-bytes"
+    s = Settings(_env_file=None, DATABASE_URL="postgresql://u:p@host:5432/db", SECRET_KEY=key)
+    assert s.SECRET_KEY == key
+
+
+def test_secret_key_shorter_than_32_bytes_raises_off_sqlite():
+    """F61 — PyJWT HS256 wants >= 256 bits; a short real-database key refuses to boot."""
+    with pytest.raises(Exception, match="at least 32"):
+        Settings(_env_file=None, DATABASE_URL="postgresql://u:p@host:5432/db",
+                 SECRET_KEY="a-real-random-secret-31-bytes!!")
+
+
+def test_short_secret_key_is_fine_on_sqlite():
+    s = Settings(_env_file=None, DATABASE_URL="sqlite:///./whatever.db", SECRET_KEY="short")
+    assert s.SECRET_KEY == "short"
 
 
 # ---------------------------------------------------------------------------

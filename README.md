@@ -11,7 +11,7 @@
 |-----------|-----------------------------------------|
 | Frontend  | React 18, TypeScript, Zustand, Recharts |
 | Backend   | FastAPI, SQLAlchemy, Alembic, Pydantic  |
-| Auth      | JWT (python-jose) + bcrypt              |
+| Auth      | JWT (PyJWT) + bcrypt                    |
 | DB        | SQLite (dev) / PostgreSQL (prod)        |
 | CI        | GitHub Actions                          |
 

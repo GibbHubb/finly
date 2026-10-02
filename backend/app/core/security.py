@@ -8,6 +8,9 @@ import jwt
 
 from app.core.config import settings
 
+# F61 — tolerated clock skew between the instance that minted a token and the one reading it.
+JWT_LEEWAY_SECONDS = 10
+
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
@@ -47,6 +50,8 @@ def create_refresh_token(subject: Any, jti: str, expires_delta: timedelta | None
 
 def decode_token(token: str) -> dict:
     try:
-        return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-    except jwt.PyJWTError:  # F61 — was jose.JWTError (expired, bad signature, malformed)
+        # F61 — PyJWT validates `iat` (python-jose did not). A token minted by another serverless
+        # instance whose clock runs a few seconds ahead would otherwise be "not yet valid" -> 401.
+        return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM], leeway=JWT_LEEWAY_SECONDS)
+    except jwt.PyJWTError:  # F61 — expired, not yet valid, bad signature, malformed
         raise ValueError("Invalid token")

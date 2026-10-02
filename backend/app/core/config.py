@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings
 # deployment, every token it signs is forgeable by anyone who has read the
 # (public) repo.
 _DEV_DEFAULT_SECRET = "dev-secret-change-in-prod"
+MIN_SECRET_KEY_BYTES = 32  # F61
 
 
 class Settings(BaseSettings):
@@ -82,6 +83,14 @@ class Settings(BaseSettings):
                 "SECRET_KEY is unset or is the development default "
                 f"({_DEV_DEFAULT_SECRET!r}) while DATABASE_URL points at a real "
                 "database. Set SECRET_KEY to a unique random value: "
+                'python -c "import secrets; print(secrets.token_hex(32))"'
+            )
+        # F61 — PyJWT signs HS256 with this key; RFC 7518 §3.2 wants at least 256 bits. CI's key
+        # is >= 32 bytes, and `secrets.token_hex(32)` (the command above) gives 64.
+        if not is_local and len(self.SECRET_KEY.encode()) < MIN_SECRET_KEY_BYTES:
+            raise ValueError(
+                f"SECRET_KEY is {len(self.SECRET_KEY.encode())} bytes; a real database needs at least "
+                f"{MIN_SECRET_KEY_BYTES}. Generate one with: "
                 'python -c "import secrets; print(secrets.token_hex(32))"'
             )
         return self
