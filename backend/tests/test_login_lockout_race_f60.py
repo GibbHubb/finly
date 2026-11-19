@@ -12,12 +12,13 @@ Without the env var that test is skipped (it is NOT silently green: it reports
 as skipped). The SQLite tests below always run.
 """
 import os
+import time
 import unittest.mock as mock
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, event, func, select
 from sqlalchemy.orm import sessionmaker
 
 import app.services.auth as auth_module
@@ -59,8 +60,24 @@ def test_sequential_lockout_still_works_on_sqlite(client):
     assert codes == [401] * 5 + [429] * 2
 
 
+# F63 — the window between the count and the insert. Since F63 the insert is reserved straight
+# after the count (bcrypt moved outside the lock), so that window is a few milliseconds and the
+# no-lock control could no longer provoke the race on a fast machine: it went red as "insensitive".
+# Holding the count's result for this long before the insert widens the window deterministically.
+# It is applied to the guarded burst too, where it only makes the test stricter.
+COUNT_TO_INSERT_DELAY = 0.05
+
+
+def _widen_count_to_insert_window(engine):
+    @event.listens_for(engine, "after_cursor_execute")
+    def _pause_after_count(conn, cursor, statement, params, context, executemany):
+        if statement.lstrip().upper().startswith("SELECT COUNT") and "login_attempts" in statement:
+            time.sleep(COUNT_TO_INSERT_DELAY)
+
+
 def _burst(url, serialise=True):
     engine = create_engine(url)
+    _widen_count_to_insert_window(engine)
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)

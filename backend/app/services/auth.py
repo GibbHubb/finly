@@ -123,21 +123,62 @@ def _serialise_login_attempts(db: Session, email: str) -> None:
     db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"login:{email}"})
 
 
+_DUMMY_HASH: str | None = None
+
+
+def _dummy_hash() -> str:
+    """A real bcrypt hash of a random value, made once, for unknown-email logins to check against."""
+    global _DUMMY_HASH
+    if _DUMMY_HASH is None:
+        _DUMMY_HASH = hash_password(new_jti())
+    return _DUMMY_HASH
+
+
+def lockout_key(email: str) -> str:
+    """F63 — the lockout counter's key. `Bob@x.com`, `bob@x.com` and ` bob@x.com `
+    share one counter, so an attacker cannot buy 5 fresh guesses per casing.
+
+    Only the COUNTER is normalised. The account lookup stays an exact match on
+    what was registered: making login case-insensitive is an identity change
+    (registration would have to normalise too, plus a lower(email) unique
+    index), not lockout hardening.
+    """
+    return email.strip().lower()
+
+
 def login_user(email: str, password: str, db: Session, now: datetime | None = None) -> Token:
     """F42 — DB-backed lockout in front of the password check.
+
+    F63 — the attempt is RESERVED before the password is checked, and the
+    advisory lock covers only the reservation (count + insert), not bcrypt:
+
+      1. lock(key) -> count recent attempts -> >= threshold: 429
+      2. insert this attempt's row, read the user's hash -> COMMIT
+         (releases the lock AND hands the pooled connection back)
+      3. bcrypt, holding no lock and no connection
+      4. right password: delete the reserved row, issue the pair;
+         wrong password: the row stays as the failure, 401.
+
+    The 5-then-429 guarantee holds because the count a request sees under the
+    lock includes every attempt reserved before it, finished or still in
+    bcrypt: at most THRESHOLD attempts per key per window ever reach step 3.
+    Cost: while five logins are mid-bcrypt a sixth concurrent one is refused
+    even if some of the five turn out correct. That errs on the safe side and
+    lasts as long as one bcrypt.
 
     `now` is an injection point for the fixed-clock test, not a real caller
     argument — production always mints it here from the wall clock.
     """
     now = now or datetime.utcnow()
     window_start = now - LOGIN_LOCKOUT_WINDOW
-    _serialise_login_attempts(db, email)
-    recent_failures = (
+    key = lockout_key(email)
+    _serialise_login_attempts(db, key)
+    recent_attempts = (
         db.query(LoginAttempt)
-        .filter(LoginAttempt.email == email, LoginAttempt.created_at >= window_start)
+        .filter(LoginAttempt.email == key, LoginAttempt.created_at >= window_start)
         .count()
     )
-    if recent_failures >= LOGIN_LOCKOUT_THRESHOLD:
+    if recent_attempts >= LOGIN_LOCKOUT_THRESHOLD:
         # F42 — refused BEFORE the password is even checked: a correct 6th
         # guess must not be rewarded with a login, or the lockout leaks
         # whether the attacker just found the right password.
@@ -147,13 +188,28 @@ def login_user(email: str, password: str, db: Session, now: datetime | None = No
             detail="Too many failed login attempts. Try again in a minute.",
         )
 
+    attempt = LoginAttempt(email=key, created_at=now)
+    db.add(attempt)
+    db.flush()
+    # Read every value needed after the commit NOW: touching an expired ORM
+    # attribute after commit would lazily open a new transaction, i.e. check a
+    # pooled connection back out for the whole bcrypt.
+    attempt_id = attempt.id
     user = db.query(User).filter(User.email == email).first()
-    if not user or not verify_password(password, user.hashed_password):
-        db.add(LoginAttempt(email=email, created_at=now))
-        db.commit()  # also releases the advisory lock
+    user_id, hashed = (user.id, user.hashed_password) if user else (None, None)
+    db.commit()  # the reservation is now visible to the next waiter; lock + connection released
+
+    if user_id is None or hashed is None:
+        # Spend the same bcrypt time as a real check, so an unknown email is not
+        # distinguishable from a wrong password by response time (F63 review).
+        verify_password(password, _dummy_hash())
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not verify_password(password, hashed):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    return _issue_token_pair(user.id, db)
+    # A success is not a failure: hand the reserved slot back.
+    db.query(LoginAttempt).filter(LoginAttempt.id == attempt_id).delete(synchronize_session=False)
+    return _issue_token_pair(user_id, db)  # its commit also commits the delete
 
 
 def demo_login(db: Session) -> Token:

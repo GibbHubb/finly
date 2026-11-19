@@ -52,6 +52,14 @@ def decode_token(token: str) -> dict:
     try:
         # F61 — PyJWT validates `iat` (python-jose did not). A token minted by another serverless
         # instance whose clock runs a few seconds ahead would otherwise be "not yet valid" -> 401.
-        return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM], leeway=JWT_LEEWAY_SECONDS)
+        # F63 — PyJWT only checks `exp` IF present; a signed token without one would never expire.
+        # Every token finly mints (create_access_token, create_refresh_token) carries all three.
+        return jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+            leeway=JWT_LEEWAY_SECONDS,
+            options={"require": ["exp", "sub", "jti"]},
+        )
     except jwt.PyJWTError:  # F61 — expired, not yet valid, bad signature, malformed
         raise ValueError("Invalid token")

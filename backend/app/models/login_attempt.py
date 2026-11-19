@@ -1,7 +1,9 @@
 """F42 — one row per FAILED login, for the DB-backed lockout counter.
 
-A row is written only on a wrong password (`services/auth.py:login_user`),
-never on success and never on an unknown email — so counting is cheap
+A row is written only on a wrong password or an unknown email
+(`services/auth.py:login_user`), never kept on success — F63: every attempt
+reserves its row before bcrypt and a correct password deletes it again. The
+`email` column is the normalised lockout key (`lockout_key`), so counting is cheap
 (`WHERE email = ? AND created_at > now() - 60s`) and the table self-trims:
 nothing ever deletes a row, but a real user's failed-attempt history is a
 handful of rows, not an unbounded log.
