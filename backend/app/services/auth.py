@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 
 from fastapi import Depends, HTTPException, status
@@ -22,6 +23,8 @@ from app.models.login_attempt import LoginAttempt
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
 from app.schemas.user import Token, UserCreate, UserUpdate
+
+logger = logging.getLogger(__name__)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -94,6 +97,12 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 def normalise_email(email: str) -> str:
     """F64 — the one rule for what counts as "the same email": trimmed, lowercased.
 
+    Python's str.lower() and the database's lower() agree on ASCII but can differ on
+    some non-ASCII characters (e.g. Postgres lower() depends on the database's
+    locale/collation). Lookups compare the database's lower(column) with this value,
+    so for such an address the two views of "the same email" may not line up exactly.
+    ASCII addresses are unaffected.
+
     Used for the account identity (registration stores it, login and the
     duplicate check match on `lower(User.email)`, backed by the unique index
     `ix_users_email_lower`) AND for the lockout counter's key, so the two can
@@ -102,7 +111,7 @@ def normalise_email(email: str) -> str:
     return email.strip().lower()
 
 
-def _find_user_by_email(db: Session, email: str) -> User | None:
+def find_user_by_email(db: Session, email: str) -> User | None:
     """F64 — case-insensitive lookup. Matches on lower(email), not on a
     lowercased column, so a legacy row stored mixed-case before F64 still
     matches without rewriting it; the unique index on lower(email) guarantees
@@ -112,7 +121,7 @@ def _find_user_by_email(db: Session, email: str) -> User | None:
 
 def register_user(data: UserCreate, db: Session) -> User:
     email = normalise_email(data.email)
-    if _find_user_by_email(db, email):
+    if find_user_by_email(db, email):
         raise HTTPException(status_code=400, detail="Email already registered")
     user = User(
         email=email,
@@ -122,10 +131,15 @@ def register_user(data: UserCreate, db: Session) -> User:
     db.add(user)
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         # F64 — two concurrent registrations of one email (any case) both pass the
         # check above; ix_users_email_lower lets one in and refuses the other here.
+        # Log WHICH constraint fired, so a different IntegrityError is not silently
+        # reported as a duplicate. Only the driver's first line: str(exc) would add the
+        # INSERT's parameters (the bcrypt hash), and Postgres's DETAIL line the email.
         db.rollback()
+        reason = str(exc.orig).splitlines()[0] if exc.orig is not None else type(exc).__name__
+        logger.warning("F64: registration refused by the database: %s", reason)
         raise HTTPException(status_code=400, detail="Email already registered")
     db.refresh(user)
     return user
@@ -220,7 +234,7 @@ def login_user(email: str, password: str, db: Session, now: datetime | None = No
     # attribute after commit would lazily open a new transaction, i.e. check a
     # pooled connection back out for the whole bcrypt.
     attempt_id = attempt.id
-    user = _find_user_by_email(db, key)
+    user = find_user_by_email(db, key)
     user_id, hashed = (user.id, user.hashed_password) if user else (None, None)
     db.commit()  # the reservation is now visible to the next waiter; lock + connection released
 

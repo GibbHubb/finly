@@ -98,7 +98,7 @@ def test_a_registration_that_loses_the_race_gets_400_not_500(client, db, monkeyp
     pre-check; the index lets one in and the loser must get the same 400, not a
     500. Simulated by making the pre-check miss the row that is already there."""
     _raw_user(db, "Race@finly.dev")
-    monkeypatch.setattr(auth_module, "_find_user_by_email", lambda *a: None)
+    monkeypatch.setattr(auth_module, "find_user_by_email", lambda *a: None)
     res = _register(client, "race@finly.dev")
     assert res.status_code == 400
     assert res.json()["detail"] == "Email already registered"
@@ -170,3 +170,57 @@ def test_migration_refuses_case_collisions_then_applies(tmp_path):
         assert "ix_users_email_lower" not in _index_names(engine)
     finally:
         engine.dispose()
+
+
+# --- review follow-ups (2026-11-21) -------------------------------------------
+
+def test_seed_demo_finds_a_case_variant_demo_row_instead_of_inserting(db, monkeypatch):
+    """With the lower(email) index, an exact-match demo lookup that misses
+    `Demo@finly.app` would INSERT `demo@finly.app`, hit the index, and 500 the
+    demo login. The lookup follows the F64 rule, so it reuses the existing row."""
+    from app.core.config import settings
+    from app.services.demo_seed import get_demo_user, seed_demo
+
+    monkeypatch.setattr(settings, "DEMO_USER_EMAIL", "demo@finly.app")
+    _raw_user(db, "Demo@finly.app")
+    existing_id = db.query(User).one().id
+
+    assert get_demo_user(db).id == existing_id
+    assert seed_demo(db).id == existing_id
+    assert db.query(User).count() == 1
+
+
+def test_demo_login_with_a_case_variant_demo_row(client, db, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "DEMO_MODE", True)
+    monkeypatch.setattr(settings, "DEMO_USER_EMAIL", "demo@finly.app")
+    _raw_user(db, "DEMO@finly.app")
+    assert client.post("/api/v1/auth/demo-login").status_code == 200
+    assert db.query(User).count() == 1
+
+
+def test_a_mixed_case_demo_email_setting_is_stored_normalised(db, monkeypatch):
+    from app.core.config import settings
+    from app.services.demo_seed import get_demo_user, seed_demo
+
+    monkeypatch.setattr(settings, "DEMO_USER_EMAIL", " Demo@Finly.app ")
+    user = seed_demo(db)
+    assert user.email == "demo@finly.app"
+    assert get_demo_user(db).id == user.id
+
+
+def test_a_refused_registration_logs_the_constraint_but_no_secrets(client, db, monkeypatch, caplog):
+    """The broad `except IntegrityError` must not hide WHICH constraint fired, and
+    the log must carry neither the password nor its hash (str(IntegrityError)
+    would include the INSERT's parameters, so only the driver's first line is logged)."""
+    _raw_user(db, "Logged@finly.dev")
+    monkeypatch.setattr(auth_module, "find_user_by_email", lambda *a: None)
+    with caplog.at_level("WARNING", logger="app.services.auth"):
+        res = _register(client, "logged@finly.dev", password="sekrit-pass-99")
+    assert res.status_code == 400
+    messages = [r.getMessage() for r in caplog.records if r.name == "app.services.auth"]
+    assert len(messages) == 1, messages
+    assert "ix_users_email_lower" in messages[0]
+    assert "sekrit-pass-99" not in messages[0]
+    assert "$2b$" not in messages[0]  # no bcrypt hash

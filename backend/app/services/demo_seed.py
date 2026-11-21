@@ -29,6 +29,7 @@ from app.core.security import hash_password
 from app.models.budget import Budget
 from app.models.transaction import Category, Transaction, TransactionType
 from app.models.user import User
+from app.services.auth import find_user_by_email, normalise_email
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,10 @@ def _days_in_month(d: date) -> int:
 
 
 def get_demo_user(db: Session) -> User | None:
-    return db.query(User).filter(User.email == settings.DEMO_USER_EMAIL).first()
+    # F64 — the same case-insensitive rule as login: with the unique index on
+    # lower(email), an exact-match miss on `Demo@finly.app` would INSERT
+    # `demo@finly.app`, hit the index, and 500 the demo login.
+    return find_user_by_email(db, settings.DEMO_USER_EMAIL)
 
 
 def _build_transactions(user_id: int, today: date) -> list[Transaction]:
@@ -165,7 +169,7 @@ def seed_demo(db: Session, *, force: bool = False) -> User:
 
     if not user:
         user = User(
-            email=settings.DEMO_USER_EMAIL,
+            email=normalise_email(settings.DEMO_USER_EMAIL),
             hashed_password=hash_password(settings.DEMO_USER_PASSWORD),
             full_name=settings.DEMO_USER_NAME,
             base_currency="EUR",

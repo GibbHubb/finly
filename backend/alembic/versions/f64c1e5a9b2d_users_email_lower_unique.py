@@ -5,6 +5,12 @@ what makes "at most one row matches" true in the database, including for two reg
 racing each other. Existing rows are NOT rewritten: a legacy mixed-case email keeps working
 because the lookup is on lower(email), not on a lowercased column.
 
+Note on the collision check: it groups on lower(email) only, NOT trim, matching the index.
+The app also strips whitespace (normalise_email), but a stored email with surrounding
+spaces is not counted as colliding here (prod had none on 2026-11-21). And Python's
+str.lower() (what the app writes) and Postgres lower() (what the index and lookup use,
+locale-dependent) agree on ASCII but can differ for some non-ASCII characters.
+
 Revision ID: f64c1e5a9b2d
 Revises: f45b0d9e7c1a
 """
