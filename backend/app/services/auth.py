@@ -2,8 +2,9 @@ from datetime import datetime, timedelta
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy import update as sa_update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -90,16 +91,42 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
 
 
+def normalise_email(email: str) -> str:
+    """F64 — the one rule for what counts as "the same email": trimmed, lowercased.
+
+    Used for the account identity (registration stores it, login and the
+    duplicate check match on `lower(User.email)`, backed by the unique index
+    `ix_users_email_lower`) AND for the lockout counter's key, so the two can
+    never disagree again (F63 had lowercased only the counter).
+    """
+    return email.strip().lower()
+
+
+def _find_user_by_email(db: Session, email: str) -> User | None:
+    """F64 — case-insensitive lookup. Matches on lower(email), not on a
+    lowercased column, so a legacy row stored mixed-case before F64 still
+    matches without rewriting it; the unique index on lower(email) guarantees
+    at most one row can."""
+    return db.query(User).filter(func.lower(User.email) == normalise_email(email)).first()
+
+
 def register_user(data: UserCreate, db: Session) -> User:
-    if db.query(User).filter(User.email == data.email).first():
+    email = normalise_email(data.email)
+    if _find_user_by_email(db, email):
         raise HTTPException(status_code=400, detail="Email already registered")
     user = User(
-        email=data.email,
+        email=email,
         hashed_password=hash_password(data.password),
         full_name=data.full_name,
     )
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # F64 — two concurrent registrations of one email (any case) both pass the
+        # check above; ix_users_email_lower lets one in and refuses the other here.
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Email already registered")
     db.refresh(user)
     return user
 
@@ -138,12 +165,10 @@ def lockout_key(email: str) -> str:
     """F63 — the lockout counter's key. `Bob@x.com`, `bob@x.com` and ` bob@x.com `
     share one counter, so an attacker cannot buy 5 fresh guesses per casing.
 
-    Only the COUNTER is normalised. The account lookup stays an exact match on
-    what was registered: making login case-insensitive is an identity change
-    (registration would have to normalise too, plus a lower(email) unique
-    index), not lockout hardening.
+    F64 — it is exactly the account identity's normalisation: one counter per
+    account, not per spelling.
     """
-    return email.strip().lower()
+    return normalise_email(email)
 
 
 def login_user(email: str, password: str, db: Session, now: datetime | None = None) -> Token:
@@ -195,7 +220,7 @@ def login_user(email: str, password: str, db: Session, now: datetime | None = No
     # attribute after commit would lazily open a new transaction, i.e. check a
     # pooled connection back out for the whole bcrypt.
     attempt_id = attempt.id
-    user = db.query(User).filter(User.email == email).first()
+    user = _find_user_by_email(db, key)
     user_id, hashed = (user.id, user.hashed_password) if user else (None, None)
     db.commit()  # the reservation is now visible to the next waiter; lock + connection released
 

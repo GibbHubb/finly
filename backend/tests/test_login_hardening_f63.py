@@ -98,13 +98,15 @@ def test_case_variants_share_one_lockout_counter(db):
     assert {r.email for r in db.query(LoginAttempt).all()} == {"bob@finly.dev"}
 
 
-def test_account_lookup_stays_exact_match(db):
-    """Decision (plan §5): only the COUNTER is normalised. Login itself still
-    matches the email exactly as registered; changing that is an identity
-    change with its own migration, not lockout hardening."""
-    _add_user(db, email="Mixed@finly.dev")
-    assert _login(db, "Mixed@finly.dev", "right-pass-1") == 200
-    assert _login(db, "mixed@finly.dev", "right-pass-1") == 401
+def test_counter_and_account_agree_on_one_email(db):
+    """F64 reversed F63's "lookup stays exact match" decision: the account is
+    matched on the same normalised email the counter uses (see
+    test_email_identity_f64.py), so a casing variant is the same account AND the
+    same counter, never a different account sharing someone else's counter."""
+    _add_user(db, email="Mixed@finly.dev")  # a legacy row stored as typed
+    assert _login(db, "mixed@finly.dev", "right-pass-1") == 200
+    assert [_login(db, v, "wrong") for v in ["MIXED@finly.dev", "mixed@finly.dev"]] == [401, 401]
+    assert {r.email for r in db.query(LoginAttempt).all()} == {"mixed@finly.dev"}
 
 
 # --- (c) required claims ------------------------------------------------------
